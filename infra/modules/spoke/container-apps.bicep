@@ -27,6 +27,16 @@ param logAnalyticsSharedKey string
 @description('APIM Gateway URL for the sample container app')
 param apimGatewayUrl string
 
+@secure()
+@description('APIM subscription key for calling the model gateway')
+param apimSubscriptionKey string = ''
+
+@description('Chat agent container image (set after building and pushing to ACR)')
+param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Chat agent container port')
+param chatAgentPort int = 80
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -93,28 +103,48 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       ingress: {
         external: true
-        targetPort: 8080
+        targetPort: chatAgentPort
         transport: 'auto'
       }
+      secrets: !empty(apimSubscriptionKey)
+        ? [
+            { name: 'apim-api-key', value: apimSubscriptionKey }
+          ]
+        : []
+      registries: !empty(apimSubscriptionKey)
+        ? [
+            {
+              server: acr.properties.loginServer
+              identity: 'system'
+            }
+          ]
+        : []
     }
     template: {
       containers: [
         {
-          name: 'sample-agent'
-          // Replace with your own image from ACR after build
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          name: 'chat-agent'
+          image: chatAgentImage
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: [
-            { name: 'APIM_GATEWAY_URL', value: apimGatewayUrl }
-            { name: 'OPENAI_API_BASE', value: '${apimGatewayUrl}/openai' }
-          ]
+          env: concat(
+            [
+              { name: 'APIM_GATEWAY_URL', value: apimGatewayUrl }
+              { name: 'OPENAI_API_BASE', value: '${apimGatewayUrl}/openai' }
+              { name: 'OPENAI_DEPLOYMENT_NAME', value: 'gpt-4o' }
+            ],
+            !empty(apimSubscriptionKey)
+              ? [
+                  { name: 'APIM_API_KEY', secretRef: 'apim-api-key' }
+                ]
+              : []
+          )
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1
         maxReplicas: 3
       }
     }

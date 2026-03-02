@@ -38,6 +38,12 @@ param hubResourceGroupName string
 @description('Spoke resource group name')
 param spokeResourceGroupName string
 
+@description('Chat agent container image (set via CHAT_AGENT_IMAGE env var after building)')
+param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Chat agent container port')
+param chatAgentPort int = 80
+
 @description('Model deployments for the hub Foundry')
 param hubModelDeployments array = [
   {
@@ -244,6 +250,21 @@ module spokeContainerApps 'modules/spoke/container-apps.bicep' = {
     logAnalyticsCustomerId: hubObservability.outputs.logAnalyticsCustomerId
     logAnalyticsSharedKey: hubObservability.outputs.logAnalyticsSharedKey
     apimGatewayUrl: hubApim.outputs.apimGatewayUrl
+    apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
+    chatAgentImage: chatAgentImage
+    chatAgentPort: chatAgentPort
+  }
+}
+
+// ============================================================================
+// Phase 7b — APIM Chat Frontend (exposes spoke app through hub gateway)
+// ============================================================================
+
+module apimChatApi 'modules/hub/apim-chat-api.bicep' = {
+  scope: hubRg
+  params: {
+    apimName: hubApim.outputs.apimName
+    chatAppFqdn: spokeContainerApps.outputs.sampleAppFqdn
   }
 }
 
@@ -283,3 +304,4 @@ output apimGatewayUrl string = hubApim.outputs.apimGatewayUrl
 output foundryEndpoint string = hubFoundry.outputs.foundryEndpoint
 output acrLoginServer string = spokeContainerApps.outputs.acrLoginServer
 output sampleAppFqdn string = spokeContainerApps.outputs.sampleAppFqdn
+output chatFrontendUrl string = apimChatApi.outputs.chatFrontendUrl
