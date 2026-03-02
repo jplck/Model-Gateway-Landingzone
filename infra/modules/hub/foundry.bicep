@@ -173,11 +173,13 @@ resource aiServicesAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-prev
     name: 'S0'
   }
   properties: {
+    allowProjectManagement: true
     customSubDomainName: aiServicesName
     publicNetworkAccess: 'Enabled' // Phase 9: switch to 'Disabled'
     networkAcls: {
       defaultAction: 'Allow' // Phase 9: switch to 'Deny'
     }
+    disableLocalAuth: false
     networkInjections: [
       {
         scenario: 'agent'
@@ -214,21 +216,17 @@ resource deployments 'Microsoft.CognitiveServices/accounts/deployments@2024-10-0
 // AI Foundry Project
 // ============================================================================
 
-resource foundryProject 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
+resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
+  parent: aiServicesAccount
   name: foundryProjectName
   location: location
   tags: tags
-  kind: 'AIFoundryProject'
   identity: {
     type: 'SystemAssigned'
   }
-  sku: {
-    name: 'S0'
-  }
   properties: {
-    customSubDomainName: foundryProjectName
-    #disable-next-line BCP037
-    accountId: aiServicesAccount.id
+    description: 'AI Foundry project for ${instanceSuffix}'
+    displayName: foundryProjectName
   }
 }
 
@@ -356,14 +354,12 @@ resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityH
   ]
 }
 
-resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-04-01-preview' = {
+resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: foundryProject
   name: 'default'
   properties: {
+    #disable-next-line BCP037
     capabilityHostKind: 'Agents'
-    vectorStoreConnections: [searchConnection.name]
-    storageConnections: [storageConnection.name]
-    threadStorageConnections: [cosmosConnection.name]
   }
   dependsOn: [accountCapabilityHost]
 }
