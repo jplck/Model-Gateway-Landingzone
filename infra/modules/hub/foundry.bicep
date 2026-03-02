@@ -242,7 +242,11 @@ resource storageConnection 'Microsoft.CognitiveServices/accounts/connections@202
     target: storageAccount.properties.primaryEndpoints.blob
     authType: 'AAD'
     metadata: {
+      ApiType: 'Azure'
       ResourceId: storageAccount.id
+      location: location
+      ContainerName: 'default'
+      AccountName: storageAccountName
     }
   }
 }
@@ -255,7 +259,9 @@ resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025
     target: 'https://${searchService.name}.search.windows.net'
     authType: 'AAD'
     metadata: {
+      ApiType: 'Azure'
       ResourceId: searchService.id
+      location: location
     }
   }
 }
@@ -268,7 +274,9 @@ resource cosmosConnection 'Microsoft.CognitiveServices/accounts/connections@2025
     target: cosmosAccount.properties.documentEndpoint
     authType: 'AAD'
     metadata: {
+      ApiType: 'Azure'
       ResourceId: cosmosAccount.id
+      location: location
     }
   }
 }
