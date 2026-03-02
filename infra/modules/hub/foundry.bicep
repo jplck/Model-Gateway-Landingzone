@@ -393,6 +393,7 @@ resource aiServicesPe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
       }
     ]
   }
+  dependsOn: [projectCapabilityHost]
 }
 
 resource aiServicesPeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
