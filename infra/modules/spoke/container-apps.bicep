@@ -61,6 +61,12 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
       infrastructureSubnetId: containerAppsSubnetId
       internal: false // Phase 9: switch to true for private-only access
     }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -90,12 +96,6 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8080
         transport: 'auto'
       }
-      registries: [
-        {
-          server: acr.properties.loginServer
-          identity: 'system'
-        }
-      ]
     }
     template: {
       containers: [

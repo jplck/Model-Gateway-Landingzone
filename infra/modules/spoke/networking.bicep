@@ -78,6 +78,14 @@ var baseSubnets = [
     properties: {
       addressPrefix: containerAppsSubnetPrefix
       networkSecurityGroup: { id: containerAppsNsg.id }
+      delegations: [
+        {
+          name: 'Microsoft.App.environments'
+          properties: {
+            serviceName: 'Microsoft.App/environments'
+          }
+        }
+      ]
     }
   }
   {
