@@ -26,7 +26,7 @@ param instanceSuffix string = 'hub'
 @description('Private endpoint subnet ID')
 param privateEndpointSubnetId string
 
-@description('Agent subnet ID (delegated to Microsoft.CognitiveServices/accounts)')
+@description('Agent subnet ID (delegated to Microsoft.App/environments)')
 param agentSubnetId string
 
 @description('Log Analytics workspace ID for diagnostic settings')
@@ -184,6 +184,7 @@ resource aiServicesAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-prev
       {
         scenario: 'agent'
         subnetArmId: agentSubnetId
+        useMicrosoftManagedNetwork: false
       }
     ]
   }
@@ -194,7 +195,7 @@ resource aiServicesAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-prev
 // ============================================================================
 
 @batchSize(1)
-resource deployments 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = [
+resource deployments 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = [
   for deployment in modelDeployments: {
     parent: aiServicesAccount
     name: deployment.name
@@ -231,29 +232,27 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-0
 }
 
 // ============================================================================
-// Connections on the Foundry Account
+// Connections on the Foundry Project (per official Microsoft pattern)
 // ============================================================================
 
-resource storageConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
-  parent: aiServicesAccount
-  name: '${storageAccountName}-connection'
+resource storageConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: foundryProject
+  name: storageAccountName
   properties: {
-    category: 'AzureBlob'
+    category: 'AzureStorageAccount'
     target: storageAccount.properties.primaryEndpoints.blob
     authType: 'AAD'
     metadata: {
       ApiType: 'Azure'
       ResourceId: storageAccount.id
       location: location
-      ContainerName: 'default'
-      AccountName: storageAccountName
     }
   }
 }
 
-resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
-  parent: aiServicesAccount
-  name: '${searchServiceName}-connection'
+resource searchConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: foundryProject
+  name: searchServiceName
   properties: {
     category: 'CognitiveSearch'
     target: 'https://${searchService.name}.search.windows.net'
@@ -266,9 +265,9 @@ resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025
   }
 }
 
-resource cosmosConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
-  parent: aiServicesAccount
-  name: '${cosmosAccountName}-connection'
+resource cosmosConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: foundryProject
+  name: cosmosAccountName
   properties: {
     category: 'CosmosDB'
     target: cosmosAccount.properties.documentEndpoint
@@ -282,73 +281,78 @@ resource cosmosConnection 'Microsoft.CognitiveServices/accounts/connections@2025
 }
 
 // ============================================================================
-// RBAC — AI Services identity needs access to backing resources
+// RBAC — Project identity needs access to backing resources
+// (Per official Microsoft pattern: RBAC is assigned to the project's SMI)
 // ============================================================================
 
-// Storage Blob Data Contributor
+// Storage Blob Data Contributor (account-level, before capability host)
 resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, aiServicesAccount.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  name: guid(storageAccount.id, foundryProject.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
     )
-    principalId: aiServicesAccount.identity.principalId
+    principalId: foundryProject.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // Search Index Data Contributor
 resource searchIndexDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(searchService.id, aiServicesAccount.id, '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
+  name: guid(searchService.id, foundryProject.id, '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
   scope: searchService
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
     )
-    principalId: aiServicesAccount.identity.principalId
+    principalId: foundryProject.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // Search Service Contributor
 resource searchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(searchService.id, aiServicesAccount.id, '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
+  name: guid(searchService.id, foundryProject.id, '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
   scope: searchService
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
     )
-    principalId: aiServicesAccount.identity.principalId
+    principalId: foundryProject.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-// Cosmos DB Built-in Data Contributor (data-plane role)
-resource cosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
-  parent: cosmosAccount
-  name: guid(cosmosAccount.id, aiServicesAccount.id, '00000000-0000-0000-0000-000000000002')
+// Cosmos DB Operator (control-plane, required BEFORE capability host creates containers)
+resource cosmosDbOperator 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(cosmosAccount.id, foundryProject.id, '230815da-be43-4aae-9cb4-875f7bd000aa')
+  scope: cosmosAccount
   properties: {
-    roleDefinitionId: '${cosmosAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
-    principalId: aiServicesAccount.identity.principalId
-    scope: cosmosAccount.id
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '230815da-be43-4aae-9cb4-875f7bd000aa'
+    )
+    principalId: foundryProject.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
 // ============================================================================
-// Capability Hosts (Account-level + Project-level)
+// Capability Host (Project-level only — per official Microsoft pattern)
 //
-// These depend on RBAC assignments above. The implicit dependency through
-// dependsOn provides the ~60-second propagation window.
+// Only a project-level capability host is created. It gets all connections
+// and depends on RBAC assignments for propagation window.
 // ============================================================================
 
-resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-04-01-preview' = {
-  parent: aiServicesAccount
-  name: 'default'
+resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
+  parent: foundryProject
+  name: 'caphost'
   properties: {
+    #disable-next-line BCP037
     capabilityHostKind: 'Agents'
     vectorStoreConnections: [searchConnection.name]
     storageConnections: [storageConnection.name]
@@ -358,18 +362,8 @@ resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityH
     storageBlobDataContributor
     searchIndexDataContributor
     searchServiceContributor
-    cosmosDataContributor
+    cosmosDbOperator
   ]
-}
-
-resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
-  parent: foundryProject
-  name: 'default'
-  properties: {
-    #disable-next-line BCP037
-    capabilityHostKind: 'Agents'
-  }
-  dependsOn: [accountCapabilityHost]
 }
 
 // ============================================================================
@@ -536,3 +530,4 @@ output foundryEndpoint string = aiServicesAccount.properties.endpoint
 output foundryProjectId string = foundryProject.id
 output foundryProjectName string = foundryProject.name
 output foundryPrincipalId string = aiServicesAccount.identity.principalId
+output projectPrincipalId string = foundryProject.identity.principalId
