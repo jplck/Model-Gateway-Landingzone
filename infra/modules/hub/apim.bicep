@@ -46,6 +46,9 @@ param foundryEndpoint string
 @description('Foundry account name (for RBAC reference)')
 param foundryAccountName string
 
+@description('APIM subnet ID for VNet integration')
+param apimSubnetId string = ''
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -71,7 +74,10 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
   properties: {
     publisherEmail: publisherEmail
     publisherName: publisherName
-    // Phase 9: add virtualNetworkType + virtualNetworkConfiguration for VNet integration
+    virtualNetworkType: !empty(apimSubnetId) ? 'External' : 'None'
+    virtualNetworkConfiguration: !empty(apimSubnetId) ? {
+      subnetResourceId: apimSubnetId
+    } : null
   }
 }
 

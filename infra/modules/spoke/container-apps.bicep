@@ -37,6 +37,12 @@ param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Chat agent container port')
 param chatAgentPort int = 80
 
+@description('Subnet ID for private endpoints (spoke PE subnet)')
+param privateEndpointSubnetId string
+
+@description('Private DNS zone ID for Container Apps Environment')
+param containerAppsDnsZoneId string
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -62,14 +68,15 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
 // Container Apps Environment
 // ============================================================================
 
-resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
   name: 'cae-${projectName}-${environmentName}'
   location: location
   tags: tags
   properties: {
+    publicNetworkAccess: 'Disabled'
     vnetConfiguration: {
       infrastructureSubnetId: containerAppsSubnetId
-      internal: false // Phase 9: switch to true for private-only access
+      internal: false
     }
     workloadProfiles: [
       {
@@ -84,6 +91,46 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: logAnalyticsSharedKey
       }
     }
+  }
+}
+
+// ============================================================================
+// Private Endpoint for Container Apps Environment
+// ============================================================================
+
+resource caePe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: 'pe-${containerAppsEnv.name}'
+  location: location
+  tags: tags
+  properties: {
+    customNetworkInterfaceName: 'nic-pe-${containerAppsEnv.name}'
+    subnet: { id: privateEndpointSubnetId }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-${containerAppsEnv.name}'
+        properties: {
+          privateLinkServiceId: containerAppsEnv.id
+          groupIds: ['managedEnvironments']
+        }
+      }
+    ]
+  }
+}
+
+resource caePeNic 'Microsoft.Network/networkInterfaces@2024-05-01' existing = {
+  name: 'nic-pe-${containerAppsEnv.name}'
+}
+
+resource caePeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
+  parent: caePe
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'containerapps'
+        properties: { privateDnsZoneId: containerAppsDnsZoneId }
+      }
+    ]
   }
 }
 
@@ -177,3 +224,5 @@ output acrLoginServer string = acr.properties.loginServer
 output containerAppsEnvId string = containerAppsEnv.id
 output containerAppsEnvName string = containerAppsEnv.name
 output sampleAppFqdn string = sampleApp.properties.configuration.ingress.fqdn
+output caeDefaultDomain string = containerAppsEnv.properties.defaultDomain
+output caePrivateIpAddress string = caePeNic.properties.ipConfigurations[0].properties.privateIPAddress

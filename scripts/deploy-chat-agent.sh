@@ -4,11 +4,9 @@
 #
 # Steps:
 #   1. Get ACR login server from azd env
-#   2. Build Docker image
-#   3. Push to ACR
-#   4. Set azd env vars for the image
-#   5. Run azd provision (deploys infra + APIM chat API)
-#   6. Print the chat frontend URL
+#   2. Build and push image via ACR Tasks (cloud build)
+#   3. Update container app revision (fast, no full azd provision)
+#   4. Print the chat frontend URL (via APIM — app is internal)
 #
 # Usage:
 #   ./scripts/deploy-chat-agent.sh
@@ -56,32 +54,67 @@ az acr build \
   --no-logs 2>/dev/null && ok "Image built and pushed: $FULL_IMAGE" || err "ACR build failed"
 
 # ============================================================================
-# 3. Set azd env vars and provision
+# 3. Update container app revision (fast — no full azd provision needed)
 # ============================================================================
-info "Setting azd environment variables..."
+CA_NAME=$(azd env get-value sampleAppName 2>/dev/null | head -1) || true
+APIM_URL=$(azd env get-value apimGatewayUrl 2>/dev/null | head -1) || true
+APIM_KEY=$(azd env get-value spokeSubscriptionKey 2>/dev/null | head -1) || true
+
+if [[ -z "$CA_NAME" || -z "$SPOKE_RG" ]]; then
+  err "Container app name or spoke RG not found. Run 'azd up' first."
+fi
+
+info "Updating container app secrets..."
+az containerapp secret set \
+  --name "$CA_NAME" \
+  --resource-group "$SPOKE_RG" \
+  --secrets "apim-subscription-key=$APIM_KEY" \
+  --output none 2>/dev/null
+ok "Secrets updated"
+
+info "Updating container app with new image..."
+az containerapp update \
+  --name "$CA_NAME" \
+  --resource-group "$SPOKE_RG" \
+  --image "$FULL_IMAGE" \
+  --set-env-vars \
+    "APIM_GATEWAY_URL=${APIM_URL}" \
+    "APIM_API_KEY=secretref:apim-subscription-key" \
+    "OPENAI_DEPLOYMENT_NAME=gpt-4o" \
+    "OPENAI_API_VERSION=2024-10-21" \
+  --container-name chat-agent \
+  --output none 2>/dev/null
+ok "Container app updated"
+
+info "Setting target port..."
+az containerapp ingress update \
+  --name "$CA_NAME" \
+  --resource-group "$SPOKE_RG" \
+  --target-port 8000 \
+  --output none 2>/dev/null
+ok "Ingress updated (port 8000)"
+
+# ============================================================================
+# 4. Also set azd env vars for future azd provision runs
+# ============================================================================
+info "Saving image config to azd env..."
 azd env set CHAT_AGENT_IMAGE "$FULL_IMAGE" 2>/dev/null
 azd env set CHAT_AGENT_PORT "8000" 2>/dev/null
-ok "Environment variables set"
-
-info "Running azd provision (this deploys APIM chat API + updates container app)..."
-azd provision --no-prompt
-ok "Infrastructure provisioned"
+ok "Environment variables saved"
 
 # ============================================================================
-# 4. Print results
+# 5. Print results
 # ============================================================================
 echo ""
-CHAT_URL=$(azd env get-value chatFrontendUrl 2>/dev/null | head -1) || true
-APIM_URL=$(azd env get-value apimGatewayUrl 2>/dev/null | head -1) || true
-APP_FQDN=$(azd env get-value sampleAppFqdn 2>/dev/null | head -1) || true
+CHAT_URL="${APIM_URL}/chat/"
 
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  Chat Agent deployed successfully!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "  ${CYAN}Chat via APIM:${NC}   ${CHAT_URL:-${APIM_URL}/chat/}"
-echo -e "  ${CYAN}Direct app:${NC}      https://${APP_FQDN:-unknown}/"
-echo -e "  ${CYAN}Health check:${NC}    ${CHAT_URL:-${APIM_URL}/chat/}health"
+echo -e "  ${CYAN}Chat via APIM:${NC}   ${CHAT_URL}"
+echo -e "  ${CYAN}Health check:${NC}    ${CHAT_URL}health"
 echo ""
-echo -e "  Flow: Browser → APIM (/chat) → Container App → APIM (/openai) → Foundry (gpt-4o)"
+echo -e "  Note: Container app ingress is internal — access only via APIM."
+echo -e "  Flow: Browser → APIM (/chat) → Container App (internal) → APIM (/openai) → Foundry"
 echo ""

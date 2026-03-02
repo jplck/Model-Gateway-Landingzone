@@ -112,6 +112,7 @@ module hubDns 'modules/hub/dns.bicep' = {
   scope: hubRg
   params: {
     hubVnetId: hubNetworking.outputs.vnetId
+    location: location
     tags: tags
   }
 }
@@ -168,6 +169,7 @@ module hubApim 'modules/hub/apim.bicep' = {
     appInsightsInstrumentationKey: hubObservability.outputs.appInsightsInstrumentationKey
     foundryEndpoint: hubFoundry.outputs.foundryEndpoint
     foundryAccountName: hubFoundry.outputs.foundryAccountName
+    apimSubnetId: hubNetworking.outputs.apimSubnetId
   }
 }
 
@@ -235,6 +237,17 @@ module spokeDnsLinks 'modules/dns-zone-link.bicep' = [
   }
 ]
 
+// Link spoke VNet to Container Apps private DNS zone
+module spokeContainerAppsDnsLink 'modules/dns-zone-link.bicep' = {
+  scope: hubRg
+  params: {
+    dnsZoneName: hubDns.outputs.containerAppsDnsZoneName
+    vnetId: spokeNetworking.outputs.vnetId
+    linkName: 'link-spoke-vnet'
+    tags: tags
+  }
+}
+
 // ============================================================================
 // Phase 7 — Spoke Container Apps & Registry
 // ============================================================================
@@ -253,6 +266,18 @@ module spokeContainerApps 'modules/spoke/container-apps.bicep' = {
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
     chatAgentImage: chatAgentImage
     chatAgentPort: chatAgentPort
+    privateEndpointSubnetId: spokeNetworking.outputs.privateEndpointSubnetId
+    containerAppsDnsZoneId: hubDns.outputs.containerAppsDnsZoneId
+  }
+}
+
+// Wildcard DNS record for CAE PE (resolves app FQDNs via private DNS)
+module caeWildcardDns 'modules/hub/cae-dns-wildcard.bicep' = {
+  scope: hubRg
+  params: {
+    dnsZoneName: hubDns.outputs.containerAppsDnsZoneName
+    envPrefix: split(spokeContainerApps.outputs.caeDefaultDomain, '.')[0]
+    privateIpAddress: spokeContainerApps.outputs.caePrivateIpAddress
   }
 }
 

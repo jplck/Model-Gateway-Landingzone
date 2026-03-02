@@ -5,6 +5,9 @@
 @description('Hub VNet resource ID to link DNS zones to')
 param hubVnetId string
 
+@description('Azure region for the Container Apps private DNS zone')
+param location string
+
 @description('Tags applied to all resources')
 param tags object = {}
 
@@ -21,6 +24,8 @@ var dnsZoneNames = [
   'privatelink.search.windows.net'
   'privatelink.documents.azure.com'
 ]
+
+var containerAppsDnsZoneName = 'privatelink.${location}.azurecontainerapps.io'
 
 resource privateDnsZones 'Microsoft.Network/privateDnsZones@2024-06-01' = [
   for zone in dnsZoneNames: {
@@ -43,6 +48,24 @@ resource hubVnetLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@202
   }
 ]
 
+// Container Apps Environment private DNS zone
+resource containerAppsDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: containerAppsDnsZoneName
+  location: 'global'
+  tags: tags
+}
+
+resource containerAppsDnsHubLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: containerAppsDnsZone
+  name: 'link-hub-vnet'
+  location: 'global'
+  tags: tags
+  properties: {
+    virtualNetwork: { id: hubVnetId }
+    registrationEnabled: false
+  }
+}
+
 // ============================================================================
 // Outputs (by well-known index into dnsZoneNames)
 // ============================================================================
@@ -53,3 +76,5 @@ output aiServicesDnsZoneId string = privateDnsZones[2].id
 output storageBlobDnsZoneId string = privateDnsZones[3].id
 output searchDnsZoneId string = privateDnsZones[4].id
 output cosmosDnsZoneId string = privateDnsZones[5].id
+output containerAppsDnsZoneId string = containerAppsDnsZone.id
+output containerAppsDnsZoneName string = containerAppsDnsZone.name
