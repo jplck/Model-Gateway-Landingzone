@@ -4,7 +4,7 @@ This repository is meant to prove an architecture proposal. Find the planned arc
 
 General Tech Stack:
 
-Bicep for IaC. Add azd for easier demo deployment. No pipelines required as no production deployment required.
+Bicep for IaC. Add azd for easier demo deployment. No pipelines required as no production deployment required. Make sure to have something working and deployable after each step.
 
 Hub:
 - Solution runs on Azure.

@@ -1,0 +1,31 @@
+<policies>
+  <inbound>
+    <base />
+    <!-- Authenticate to Azure AI Services backend with APIM managed identity -->
+    <authentication-managed-identity resource="https://cognitiveservices.azure.com"
+                                     output-token-variable-name="managed-id-access-token"
+                                     ignore-error="false" />
+    <set-header name="Authorization" exists-action="override">
+      <value>@("Bearer " + (string)context.Variables["managed-id-access-token"])</value>
+    </set-header>
+    <!-- Remove client subscription key from backend request -->
+    <set-header name="api-key" exists-action="delete" />
+    <!-- Default api-version if caller omits it -->
+    <set-query-parameter name="api-version" exists-action="skip">
+      <value>2024-10-21</value>
+    </set-query-parameter>
+    <!-- Rate limiting: 100 calls per minute per subscription -->
+    <rate-limit calls="100" renewal-period="60" />
+    <!-- Route to Foundry backend -->
+    <set-backend-service backend-id="foundry-backend" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

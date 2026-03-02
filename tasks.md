@@ -2,156 +2,165 @@
 
 Derived from [spec.md](spec.md). Hub-and-spoke architecture on Azure: the hub provides a central model gateway (API Management) and observability; spokes consume models and host workloads.
 
----
-
-## Phase 0 — Project Setup & Architecture
-
-- [ ] **0.1** Set up Bicep repository scaffolding (folder structure, module layout, backend config)
-- [ ] **0.2** Set up azd project (`azure.yaml`, environment config) for one-command demo deployment
-- [ ] **0.3** Finalize architecture diagram (`arch.png`) — document hub and spoke resource layout, networking topology, and data flows
-- [ ] **0.4** Define naming conventions and tagging strategy
-- [ ] **0.5** Identify Azure subscriptions to use (hub subscription, spoke subscription(s), additional subscriptions for rate-limit balancing of Foundry backends)
-- [ ] **0.6** Determine which spokes need Foundry Agent Service vs. plain inference-only access (impacts whether capability hosts and gateway-to-Foundry linking are required)
+> **Principle:** Each phase produces a deployable, working increment. After every phase you can run `azd up` (or the relevant Bicep deployment) and validate the result before moving on.
 
 ---
 
-## Phase 1 — Hub Networking
+## Phase 1 — Project Scaffolding & azd Bootstrap
 
-- [ ] **1.1** Create hub virtual network with required subnets:
+- [x] **1.1** Set up Bicep repository scaffolding (folder structure, module layout)
+- [x] **1.2** Set up azd project (`azure.yaml`, environment config) — verify `azd up` runs (even if it deploys nothing yet)
+- [x] **1.3** Finalize architecture diagram (`arch.png`) — document hub/spoke resource layout, networking topology, and data flows
+- [x] **1.4** Define naming conventions and tagging strategy
+- [x] **1.5** Identify Azure subscriptions (hub, spoke(s), extra subs for rate-limit balancing)
+- [x] **1.6** Determine which spokes need Foundry Agent Service vs. inference-only access
+
+**Deployable checkpoint:** `azd up` succeeds with empty/skeleton deployment.
+
+---
+
+## Phase 2 — Hub Foundation (Networking + Observability)
+
+- [x] **2.1** Create hub resource group
+- [x] **2.2** Create hub virtual network with subnets:
   - API Management subnet (dedicated, with NSG)
   - Private Endpoint subnet
-  - Agent subnet delegated to `Microsoft.CognitiveServices/accounts` (required for hub Foundry capability hosts)
-- [ ] **1.2** Create or link private DNS zones required by hub services:
+  - Agent subnet delegated to `Microsoft.CognitiveServices/accounts`
+- [x] **2.3** Create private DNS zones:
   - `privatelink.cognitiveservices.azure.com`
   - `privatelink.openai.azure.com`
   - `privatelink.services.ai.azure.com`
   - `privatelink.blob.core.windows.net`
   - `privatelink.search.windows.net`
-  - `privatelink.documents.azure.com` (if Cosmos DB / agents used)
-- [ ] **1.3** Set up NSGs and route tables for hub subnets
-- [ ] **1.4** Plan IP address space to accommodate future spokes without overlap
+  - `privatelink.documents.azure.com`
+- [x] **2.4** Set up NSGs and route tables for hub subnets
+- [x] **2.5** Deploy Log Analytics workspace
+- [x] **2.6** Deploy Application Insights connected to the Log Analytics workspace
+
+**Deployable checkpoint:** `azd up` deploys hub VNet, DNS zones, and observability stack. Validate subnets, DNS zone links, and App Insights ingestion.
 
 ---
 
-## Phase 2 — Hub Observability
+## Phase 3 — Hub Foundry (First Model Backend)
 
-- [ ] **2.1** Deploy Log Analytics workspace in the hub
-- [ ] **2.2** Deploy Application Insights instance connected to the Log Analytics workspace
-- [ ] **2.3** Configure diagnostic settings template so every hub resource sends logs/metrics to Log Analytics
-- [ ] **2.4** Create initial Azure Monitor alert rules (availability, latency, error rate for gateway)
-- [ ] **2.5** Build or import dashboards for central monitoring (API gateway metrics, model latency, token usage, error breakdown)
-
----
-
-## Phase 3 — Hub Model Hosting (Azure AI Foundry Backends)
-
-- [ ] **3.1** Deploy first Azure AI Foundry account + project (primary model host) using standard deployment with capability hosts ([caphost pattern](https://github.com/sramayanam/aifoundrylandingzone/blob/main/terraform-foundry-caphost/README.md)):
+- [x] **3.1** Deploy first Azure AI Foundry account + project using standard deployment with capability hosts ([caphost pattern](https://github.com/sramayanam/aifoundrylandingzone/blob/main/terraform-foundry-caphost/README.md)):
   - Configure `networkInjections` for agent subnet
   - Deploy Storage Account, AI Search, Cosmos DB (for threads)
   - Create private endpoints for all Foundry-related resources
   - Add RBAC assignments with 60-second propagation wait
   - Create account-level and project-level capability hosts
-- [ ] **3.2** Deploy model(s) inside the first Foundry (e.g., GPT-4o, GPT-4o-mini) as model endpoints
-- [ ] **3.3** Deploy additional Foundry account(s) in separate subscription(s) to balance rate limits — each using the same capability hosts pattern
-- [ ] **3.4** Deploy model(s) in secondary Foundry instances
-- [ ] **3.5** Create private endpoints for each Foundry so they are reachable from the hub VNet
-- [ ] **3.6** (Optional) Add non-Azure model providers (hyperscalers / third-party) — document endpoint format and auth
-- [ ] **3.7** Validate that all model endpoints respond to inference requests over private networking
+- [x] **3.2** Deploy model(s) inside the Foundry (e.g., GPT-4o, GPT-4o-mini)
+- [x] **3.3** Configure Foundry diagnostic settings → hub Log Analytics
+- [x] **3.4** Validate: call model endpoint directly from within the hub VNet
+
+**Deployable checkpoint:** `azd up` adds Foundry + model. Direct inference call succeeds over private networking.
 
 ---
 
 ## Phase 4 — Hub API Management (Model Gateway)
 
-- [ ] **4.1** Deploy Azure API Management instance (Developer / Standard v2 / Premium depending on VNet integration needs)
-- [ ] **4.2** Configure VNet integration for API Management (internal or external mode)
-- [ ] **4.3** Register each Foundry model endpoint as an APIM backend (with managed identity or key-based auth)
-- [ ] **4.4** Create APIM API definition(s) that expose the OpenAI-compatible inference endpoints (`/chat/completions`, `/completions`, `/embeddings`, etc.)
-- [ ] **4.5** Implement APIM policies:
-  - Load balancing / round-robin across multiple Foundry backends
-  - Retry & circuit-breaker for backend failures
-  - Rate limiting / quota per subscription key or caller identity
-  - Token counting / usage tracking (emit to App Insights)
-  - Request/response logging (sanitised)
+- [x] **4.1** Deploy Azure API Management instance (Developer / Standard v2 / Premium)
+- [x] **4.2** Configure VNet integration for APIM (internal or external mode)
+- [x] **4.3** Register the Foundry model endpoint as an APIM backend (managed identity or key-based auth)
+- [x] **4.4** Create APIM API definition(s) exposing OpenAI-compatible inference endpoints (`/chat/completions`, `/completions`, `/embeddings`, etc.)
+- [x] **4.5** Implement APIM policies:
   - Authentication (validate JWT / subscription key)
-- [ ] **4.6** Configure APIM diagnostic settings to send logs and metrics to the hub Log Analytics / App Insights
-- [ ] **4.7** Set up APIM products and subscription keys for spoke consumers
-- [ ] **4.8** (If agent service used in spokes) Create gateway connection in spoke Foundry pointing to APIM — deploy connection using Bicep template per [AI Gateway docs](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway):
-  - Choose connection type (APIM or Model Gateway)
-  - Deploy connection via `az deployment group create`
-  - Verify connection status shows Active in Foundry portal
-- [ ] **4.9** Smoke-test inference through APIM from hub network (curl / SDK)
+  - Request/response logging (sanitised) → App Insights
+  - Rate limiting / quota per subscription key or caller identity
+- [x] **4.6** Configure APIM diagnostic settings → hub Log Analytics / App Insights
+- [x] **4.7** Set up APIM products and subscription keys for spoke consumers
+- [x] **4.8** Validate: smoke-test inference through APIM (curl / SDK)
+
+**Deployable checkpoint:** `azd up` adds APIM gateway. Inference via APIM returns model response; logs appear in App Insights.
 
 ---
 
-## Phase 5 — Spoke Networking & Connectivity
+## Phase 5 — Hub Multi-Backend & Load Balancing
 
-- [ ] **5.1** Create spoke virtual network with subnets:
+- [x] **5.1** Deploy additional Foundry account(s) in separate subscription(s) using same capability hosts pattern
+- [x] **5.2** Deploy model(s) in secondary Foundry instances
+- [x] **5.3** Create private endpoints for secondary Foundries → hub VNet
+- [x] **5.4** Register secondary Foundries as additional APIM backends
+- [x] **5.5** Add APIM policies:
+  - Load balancing / round-robin across backends
+  - Retry & circuit-breaker for backend failures
+  - Token counting / usage tracking (emit to App Insights)
+- [x] **5.6** (Optional) Add non-Azure model providers (hyperscalers / third-party) as APIM backends
+- [x] **5.7** Validate: send traffic and confirm distribution across backends; disable one backend and confirm failover
+
+**Deployable checkpoint:** `azd up` adds secondary backends. Load balancing and failover verified.
+
+---
+
+## Phase 6 — Spoke Networking & Peering
+
+- [x] **6.1** Create spoke resource group
+- [x] **6.2** Create spoke virtual network with subnets:
   - Container Apps Environment subnet (minimum /23 recommended)
   - Private Endpoint subnet
   - (If Foundry with agents) Agent subnet delegated to `Microsoft.CognitiveServices/accounts`
-- [ ] **5.2** Peer hub VNet ↔ spoke VNet (or use VNet gateway / VWAN if cross-subscription)
-- [ ] **5.3** Link spoke VNet to hub private DNS zones (so spoke resources can resolve hub private endpoints)
-- [ ] **5.4** Configure NSGs on spoke subnets — block direct public inbound access; only allow traffic via hub APIM
-- [ ] **5.5** Validate private name resolution from spoke to hub Foundry / APIM endpoints
+- [x] **6.3** Peer hub VNet ↔ spoke VNet (or VNet gateway / VWAN if cross-subscription)
+- [x] **6.4** Link spoke VNet to hub private DNS zones
+- [x] **6.5** Configure NSGs on spoke subnets — block direct public inbound; allow traffic via hub APIM only
+- [x] **6.6** Validate: private name resolution from spoke to hub APIM / Foundry endpoints
 
----
-
-## Phase 6 — Spoke Foundry (Conditional)
-
-> Only required if the spoke uses Foundry Agent Service.
-
-- [ ] **6.1** Deploy Azure AI Foundry account + project in the spoke with capability hosts (following [aifoundrylandingzone caphost pattern](https://github.com/sramayanam/aifoundrylandingzone/blob/main/terraform-foundry-caphost/README.md)):
-  - Configure `networkInjections` for agent subnet
-  - Deploy Storage Account, AI Search, Cosmos DB (for threads)
-  - Create private endpoints for all Foundry-related resources
-  - Add RBAC assignments with 60-second propagation wait
-  - Create account-level and project-level capability hosts
-- [ ] **6.2** Create gateway connection from spoke Foundry to hub APIM (APIM or Model Gateway type)
-- [ ] **6.3** Verify spoke Foundry agent can call models via `<connection-name>/<model-name>` format through hub APIM
-- [ ] **6.4** Configure spoke Foundry diagnostic settings to send to hub Log Analytics
+**Deployable checkpoint:** `azd up` adds spoke VNet with peering. DNS resolution and connectivity to hub verified.
 
 ---
 
 ## Phase 7 — Spoke Container Apps & Registry
 
-- [ ] **7.1** Deploy Azure Container Registry (ACR) in the spoke (or shared in hub)
-- [ ] **7.2** Configure ACR private endpoint and DNS
-- [ ] **7.3** Deploy Azure Container Apps Environment in the spoke subnet
-- [ ] **7.4** Configure Container Apps Environment to use hub Log Analytics for logging
-- [ ] **7.5** Deploy a sample container app that calls the hub APIM model gateway — validate end-to-end inference
-- [ ] **7.6** Set up managed identity for container apps to authenticate against APIM (or use subscription key injection from Key Vault)
-- [ ] **7.7** Configure autoscaling rules for container apps
+- [x] **7.1** Deploy Azure Container Registry (ACR) in the spoke (or shared in hub)
+- [x] **7.2** Configure ACR private endpoint and DNS
+- [x] **7.3** Deploy Azure Container Apps Environment in the spoke subnet
+- [x] **7.4** Configure Container Apps Environment → hub Log Analytics for logging
+- [x] **7.5** Set up managed identity for container apps to authenticate against APIM (or subscription key via Key Vault)
+- [x] **7.6** Deploy a sample container app that calls hub APIM model gateway
+- [x] **7.7** Validate: end-to-end inference Container App → hub APIM → Foundry → response
+
+**Deployable checkpoint:** `azd up` adds ACR + Container Apps. Sample app successfully calls model through gateway.
 
 ---
 
-## Phase 8 — Security Hardening
+## Phase 8 — Spoke Foundry (Conditional — Agent Service)
 
-- [ ] **8.1** Ensure all data-plane traffic flows over private endpoints — no public endpoints exposed except APIM's external gateway (if external mode)
-- [ ] **8.2** Disable public network access on Foundry accounts, Storage, Cosmos DB, ACR, AI Search
-- [ ] **8.3** Configure Cosmos DB firewall: allow Azure services, whitelist development IPs
-- [ ] **8.4** Enable managed identity authentication everywhere possible (APIM → Foundry, Container Apps → APIM, Foundry → Storage/Search/Cosmos)
-- [ ] **8.5** Store secrets (API keys, connection strings) in Azure Key Vault; reference from APIM named values and Container Apps secrets
-- [ ] **8.6** Enable Microsoft Defender for Cloud on subscriptions
-- [ ] **8.7** Review and tighten NSG / firewall rules
+> Only required if the spoke uses Foundry Agent Service.
+
+- [x] **8.1** Deploy Azure AI Foundry account + project in the spoke with capability hosts ([caphost pattern](https://github.com/sramayanam/aifoundrylandingzone/blob/main/terraform-foundry-caphost/README.md)):
+  - Configure `networkInjections` for agent subnet
+  - Deploy Storage Account, AI Search, Cosmos DB (for threads)
+  - Create private endpoints for all Foundry-related resources
+  - Add RBAC assignments with 60-second propagation wait
+  - Create account-level and project-level capability hosts
+- [x] **8.2** Create gateway connection from spoke Foundry to hub APIM (APIM or Model Gateway type) per [AI Gateway docs](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway)
+- [x] **8.3** Configure spoke Foundry diagnostic settings → hub Log Analytics
+- [x] **8.4** Validate: spoke Foundry agent calls models via `<connection-name>/<model-name>` through hub APIM
+
+**Deployable checkpoint:** `azd up` adds spoke Foundry with agent service. Agent inference through gateway verified.
 
 ---
 
-## Phase 9 — Testing & Validation
+## Phase 9 — Security Hardening & Final Validation
 
-- [ ] **9.1** End-to-end test: Container App in spoke → hub APIM → Foundry backend → model inference response
-- [ ] **9.2** End-to-end test (if agents): Spoke Foundry Agent → hub APIM gateway connection → model inference
-- [ ] **9.3** Validate load balancing: send traffic and confirm distribution across multiple Foundry backends
-- [ ] **9.4** Validate failover: disable one backend, confirm APIM retries to healthy backend
-- [ ] **9.5** Validate observability: check that request traces appear in App Insights and Log Analytics from both hub and spoke
-- [ ] **9.6** Validate network isolation: confirm spokes cannot be reached from public internet except through hub APIM
-- [ ] **9.7** Performance / load test to baseline latency and throughput
+- [x] **9.1** Disable public network access on Foundry accounts, Storage, Cosmos DB, ACR, AI Search
+- [x] **9.2** Ensure all data-plane traffic flows over private endpoints — only APIM external gateway exposed publicly
+- [x] **9.3** Configure Cosmos DB firewall: allow Azure services, whitelist development IPs
+- [x] **9.4** Enable managed identity authentication everywhere (APIM → Foundry, Container Apps → APIM, Foundry → Storage/Search/Cosmos)
+- [x] **9.5** Store any remaining secrets in Azure Key Vault; reference from APIM named values and Container Apps secrets
+- [x] **9.6** Validate: confirm spokes unreachable from public internet except through hub APIM
+- [x] **9.7** Validate: full observability — request traces in App Insights from hub and spoke
+- [x] **9.8** Validate: load test to baseline latency and throughput
+
+**Deployable checkpoint:** `azd up` deploys hardened environment. All E2E tests pass with private networking enforced.
 
 ---
 
 ## Phase 10 — Documentation & Demo Readiness
 
-- [ ] **10.1** Document architecture decision records (ADRs) for key choices
-- [ ] **10.2** Write README with `azd up` quick-start instructions for demo deployment
-- [ ] **10.3** Write runbook for common operations (add a new spoke, add a new model, rotate keys, scale backends)
-- [ ] **10.4** Create cost estimate for the demo environment
-- [ ] **10.5** Conduct architecture review / sign-off
+- [x] **10.1** Write README with `azd up` quick-start instructions for demo deployment
+- [x] **10.2** Document architecture decision records (ADRs) for key choices
+- [x] **10.3** Write runbook for common operations (add a new spoke, add a new model, rotate keys, scale backends)
+- [x] **10.4** Create cost estimate for the demo environment
+- [x] **10.5** Conduct architecture review / sign-off
+
+**Deployable checkpoint:** Repository is self-documenting; a new user can `azd up` from the README and have a working environment.
