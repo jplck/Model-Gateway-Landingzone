@@ -20,8 +20,8 @@ param apimSubnetPrefix string = '10.0.1.0/24'
 @description('Private endpoints subnet address prefix')
 param privateEndpointSubnetPrefix string = '10.0.2.0/24'
 
-@description('Agent subnet address prefix (delegated to Microsoft.CognitiveServices/accounts)')
-param agentSubnetPrefix string = '10.0.3.0/27'
+@description('Agent subnet address prefix (delegated to Microsoft.App/environments)')
+param agentSubnetPrefix string = '10.0.3.0/24'
 
 @description('Tags applied to all resources')
 param tags object = {}
@@ -125,9 +125,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: { id: agentNsg.id }
           delegations: [
             {
-              name: 'Microsoft.CognitiveServices.accounts'
+              name: 'Microsoft.App.environments'
               properties: {
-                serviceName: 'Microsoft.CognitiveServices/accounts'
+                serviceName: 'Microsoft.App/environments'
               }
             }
           ]

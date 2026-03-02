@@ -32,6 +32,12 @@ param publisherEmail string = 'admin@contoso.com'
 @description('APIM publisher name')
 param publisherName string = 'AI Gateway Team'
 
+@description('Hub resource group name')
+param hubResourceGroupName string
+
+@description('Spoke resource group name')
+param spokeResourceGroupName string
+
 @description('Model deployments for the hub Foundry')
 param hubModelDeployments array = [
   {
@@ -53,8 +59,8 @@ var tags = {
   managedBy: 'bicep'
 }
 
-var hubRgName = 'rg-${projectName}-hub-${environmentName}'
-var spokeRgName = 'rg-${projectName}-spoke-${environmentName}'
+var hubRgName = hubResourceGroupName
+var spokeRgName = spokeResourceGroupName
 
 var dnsZoneNames = [
   'privatelink.cognitiveservices.azure.com'

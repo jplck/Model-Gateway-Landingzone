@@ -6,3 +6,5 @@ param projectName = 'aigw'
 param deploySpokeFoundry = false
 param publisherEmail = readEnvironmentVariable('APIM_PUBLISHER_EMAIL', 'admin@contoso.com')
 param publisherName = 'AI Gateway Team'
+param hubResourceGroupName = readEnvironmentVariable('AZURE_HUB_RESOURCE_GROUP', 'rg-${readEnvironmentVariable('AZURE_ENV_NAME', 'dev')}-aigw-hub')
+param spokeResourceGroupName = readEnvironmentVariable('AZURE_SPOKE_RESOURCE_GROUP', 'rg-${readEnvironmentVariable('AZURE_ENV_NAME', 'dev')}-aigw-spoke')
