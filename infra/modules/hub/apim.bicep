@@ -27,9 +27,9 @@ param publisherEmail string = 'admin@contoso.com'
 @description('APIM publisher name')
 param publisherName string = 'AI Gateway Team'
 
-@description('APIM SKU (Developer for PoC, StandardV2/Premium for production)')
-@allowed(['Developer', 'BasicV2', 'StandardV2'])
-param skuName string = 'Developer'
+@description('APIM SKU (StandardV2 required for Agent Service gateway, Premium for full VNet isolation)')
+@allowed(['BasicV2', 'StandardV2'])
+param skuName string = 'StandardV2'
 
 @description('Log Analytics workspace ID')
 param logAnalyticsWorkspaceId string
@@ -46,7 +46,7 @@ param foundryEndpoint string
 @description('Foundry account name (for RBAC reference)')
 param foundryAccountName string
 
-@description('APIM subnet ID for VNet integration')
+@description('Subnet ID for APIM outbound VNet integration (delegated to Microsoft.Web/serverFarms)')
 param apimSubnetId string = ''
 
 // ============================================================================
@@ -60,7 +60,7 @@ var apimName = 'apim-${projectName}-${environmentName}-${take(resourceSuffix, 6)
 // API Management Service
 // ============================================================================
 
-resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
+resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' = {
   name: apimName
   location: location
   tags: tags
@@ -102,11 +102,25 @@ resource cognitiveServicesUserRole 'Microsoft.Authorization/roleAssignments@2022
   }
 }
 
+// Reader on Foundry account — required for ARM-based deployment discovery
+resource armReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(existingFoundryAccount.id, apim.id, 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
+  scope: existingFoundryAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'acdd72a7-3385-48ef-bd42-f606fba81ae7' // Reader
+    )
+    principalId: apim.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ============================================================================
 // App Insights Logger
 // ============================================================================
 
-resource apimLogger 'Microsoft.ApiManagement/service/loggers@2024-05-01' = {
+resource apimLogger 'Microsoft.ApiManagement/service/loggers@2024-06-01-preview' = {
   parent: apim
   name: 'appinsights-logger'
   properties: {
@@ -136,7 +150,7 @@ resource apimDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
 // Backend — Foundry Endpoint
 // ============================================================================
 
-resource foundryBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+resource foundryBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-preview' = {
   parent: apim
   name: 'foundry-backend'
   properties: {
@@ -151,7 +165,7 @@ resource foundryBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = 
 // API — OpenAI-compatible inference
 // ============================================================================
 
-resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
+resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
   parent: apim
   name: 'openai-api'
   properties: {
@@ -169,7 +183,7 @@ resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
 }
 
 // --- Chat Completions ---
-resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: openaiApi
   name: 'chat-completions'
   properties: {
@@ -183,7 +197,7 @@ resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024
 }
 
 // --- Completions ---
-resource completionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource completionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: openaiApi
   name: 'completions'
   properties: {
@@ -197,7 +211,7 @@ resource completionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-05-
 }
 
 // --- Embeddings ---
-resource embeddingsOp 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource embeddingsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: openaiApi
   name: 'embeddings'
   properties: {
@@ -210,11 +224,58 @@ resource embeddingsOp 'Microsoft.ApiManagement/service/apis/operations@2024-05-0
   }
 }
 
+// ARM management base URL for deployment discovery (cloud-agnostic)
+var armBaseUrl = environment().resourceManager
+var armFoundryUrl = '${armBaseUrl}${existingFoundryAccount.id}'
+
+// --- List Deployments (for Agent Service dynamic model discovery) ---
+resource listDeploymentsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'list-deployments'
+  properties: {
+    displayName: 'List Deployments'
+    method: 'GET'
+    urlTemplate: '/deployments'
+  }
+}
+
+resource listDeploymentsPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: listDeploymentsOp
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '<policies><inbound><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments?api-version=2023-05-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+  }
+}
+
+// --- Get Deployment (for Agent Service dynamic model discovery) ---
+resource getDeploymentOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'get-deployment'
+  properties: {
+    displayName: 'Get Deployment'
+    method: 'GET'
+    urlTemplate: '/deployments/{deployment-id}'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
+resource getDeploymentPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: getDeploymentOp
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '<policies><inbound><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments/{deployment-id}?api-version=2023-05-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+  }
+}
+
 // ============================================================================
 // API-level Policy
 // ============================================================================
 
-resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = {
+resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview' = {
   parent: openaiApi
   name: 'policy'
   properties: {
@@ -227,7 +288,7 @@ resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = 
 // APIM Diagnostics (request/response logging → App Insights)
 // ============================================================================
 
-resource apiDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2024-05-01' = {
+resource apiDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2024-06-01-preview' = {
   parent: apim
   name: 'applicationinsights'
   properties: {
@@ -254,7 +315,7 @@ resource apiDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2024-05-01'
 // Product & Subscription
 // ============================================================================
 
-resource gatewayProduct 'Microsoft.ApiManagement/service/products@2024-05-01' = {
+resource gatewayProduct 'Microsoft.ApiManagement/service/products@2024-06-01-preview' = {
   parent: apim
   name: 'model-gateway'
   properties: {
@@ -266,12 +327,12 @@ resource gatewayProduct 'Microsoft.ApiManagement/service/products@2024-05-01' = 
   }
 }
 
-resource productApiLink 'Microsoft.ApiManagement/service/products/apis@2024-05-01' = {
+resource productApiLink 'Microsoft.ApiManagement/service/products/apis@2024-06-01-preview' = {
   parent: gatewayProduct
   name: openaiApi.name
 }
 
-resource spokeSubscription 'Microsoft.ApiManagement/service/subscriptions@2024-05-01' = {
+resource spokeSubscription 'Microsoft.ApiManagement/service/subscriptions@2024-06-01-preview' = {
   parent: apim
   name: 'spoke-subscription'
   properties: {

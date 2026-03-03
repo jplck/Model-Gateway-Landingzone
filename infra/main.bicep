@@ -144,6 +144,7 @@ module hubFoundry 'modules/hub/foundry.bicep' = {
     logAnalyticsWorkspaceId: hubObservability.outputs.logAnalyticsWorkspaceId
     cognitiveServicesDnsZoneId: hubDns.outputs.cognitiveServicesDnsZoneId
     openAiDnsZoneId: hubDns.outputs.openAiDnsZoneId
+    aiServicesDnsZoneId: hubDns.outputs.aiServicesDnsZoneId
     storageBlobDnsZoneId: hubDns.outputs.storageBlobDnsZoneId
     searchDnsZoneId: hubDns.outputs.searchDnsZoneId
     cosmosDnsZoneId: hubDns.outputs.cosmosDnsZoneId
@@ -268,6 +269,7 @@ module spokeContainerApps 'modules/spoke/container-apps.bicep' = {
     chatAgentPort: chatAgentPort
     privateEndpointSubnetId: spokeNetworking.outputs.privateEndpointSubnetId
     containerAppsDnsZoneId: hubDns.outputs.containerAppsDnsZoneId
+    aiProjectEndpoint: deploySpokeFoundry ? spokeFoundry.outputs.projectEndpoint : ''
   }
 }
 
@@ -310,12 +312,26 @@ module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
     logAnalyticsWorkspaceId: hubObservability.outputs.logAnalyticsWorkspaceId
     cognitiveServicesDnsZoneId: hubDns.outputs.cognitiveServicesDnsZoneId
     openAiDnsZoneId: hubDns.outputs.openAiDnsZoneId
+    aiServicesDnsZoneId: hubDns.outputs.aiServicesDnsZoneId
     storageBlobDnsZoneId: hubDns.outputs.storageBlobDnsZoneId
     searchDnsZoneId: hubDns.outputs.searchDnsZoneId
     cosmosDnsZoneId: hubDns.outputs.cosmosDnsZoneId
     modelDeployments: [] // Spoke uses hub models via APIM gateway
     apimGatewayUrl: hubApim.outputs.apimGatewayUrl
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
+  }
+}
+
+// ============================================================================
+// Phase 8b — Container App → Spoke Foundry RBAC (Agent SDK access)
+// ============================================================================
+
+// Azure AI Developer role on the spoke Foundry account (enables agent CRUD)
+module containerAppFoundryRole 'modules/spoke/foundry-role.bicep' = if (deploySpokeFoundry) {
+  scope: spokeRg
+  params: {
+    foundryAccountName: deploySpokeFoundry ? spokeFoundry.outputs.foundryAccountName : ''
+    principalId: spokeContainerApps.outputs.sampleAppPrincipalId
   }
 }
 
@@ -330,3 +346,4 @@ output foundryEndpoint string = hubFoundry.outputs.foundryEndpoint
 output acrLoginServer string = spokeContainerApps.outputs.acrLoginServer
 output sampleAppFqdn string = spokeContainerApps.outputs.sampleAppFqdn
 output chatFrontendUrl string = apimChatApi.outputs.chatFrontendUrl
+output spokeProjectEndpoint string = deploySpokeFoundry ? spokeFoundry.outputs.projectEndpoint : ''

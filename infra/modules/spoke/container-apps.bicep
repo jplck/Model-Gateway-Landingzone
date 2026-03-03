@@ -43,6 +43,12 @@ param privateEndpointSubnetId string
 @description('Private DNS zone ID for Container Apps Environment')
 param containerAppsDnsZoneId string
 
+@description('AI Foundry project endpoint for Agent SDK (optional)')
+param aiProjectEndpoint string = ''
+
+@description('APIM gateway connection name for Agent SDK model routing')
+param gatewayConnectionName string = 'apim-gateway'
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -103,7 +109,6 @@ resource caePe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
   location: location
   tags: tags
   properties: {
-    customNetworkInterfaceName: 'nic-pe-${containerAppsEnv.name}'
     subnet: { id: privateEndpointSubnetId }
     privateLinkServiceConnections: [
       {
@@ -117,8 +122,14 @@ resource caePe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
   }
 }
 
-resource caePeNic 'Microsoft.Network/networkInterfaces@2024-05-01' existing = {
-  name: 'nic-pe-${containerAppsEnv.name}'
+
+
+// Resolve the PE NIC IP via a nested module to avoid BCP307
+module peNicIp './pe-nic-ip.bicep' = {
+  name: 'cae-pe-nic-ip'
+  params: {
+    nicName: last(split(caePe.properties.networkInterfaces[0].id, '/'))
+  }
 }
 
 resource caePeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
@@ -181,10 +192,16 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'APIM_GATEWAY_URL', value: apimGatewayUrl }
               { name: 'OPENAI_API_BASE', value: '${apimGatewayUrl}/openai' }
               { name: 'OPENAI_DEPLOYMENT_NAME', value: 'gpt-4o' }
+              { name: 'GATEWAY_CONNECTION_NAME', value: gatewayConnectionName }
             ],
             !empty(apimSubscriptionKey)
               ? [
                   { name: 'APIM_API_KEY', secretRef: 'apim-api-key' }
+                ]
+              : [],
+            !empty(aiProjectEndpoint)
+              ? [
+                  { name: 'AI_PROJECT_ENDPOINT', value: aiProjectEndpoint }
                 ]
               : []
           )
@@ -225,4 +242,5 @@ output containerAppsEnvId string = containerAppsEnv.id
 output containerAppsEnvName string = containerAppsEnv.name
 output sampleAppFqdn string = sampleApp.properties.configuration.ingress.fqdn
 output caeDefaultDomain string = containerAppsEnv.properties.defaultDomain
-output caePrivateIpAddress string = caePeNic.properties.ipConfigurations[0].properties.privateIPAddress
+output caePrivateIpAddress string = peNicIp.outputs.privateIpAddress
+output sampleAppPrincipalId string = sampleApp.identity.principalId

@@ -39,6 +39,9 @@ param cognitiveServicesDnsZoneId string
 @description('Private DNS zone ID for OpenAI')
 param openAiDnsZoneId string
 
+@description('Private DNS zone ID for AI Services (services.ai.azure.com)')
+param aiServicesDnsZoneId string
+
 @description('Private DNS zone ID for Blob Storage')
 param storageBlobDnsZoneId string
 
@@ -341,6 +344,28 @@ resource cosmosDbOperator 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
+// Cosmos DB data-plane: Built-in Data Contributor for project identity (agent thread R/W)
+resource cosmosDataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
+  parent: cosmosAccount
+  name: guid(cosmosAccount.id, foundryProject.id, '00000000-0000-0000-0000-000000000002')
+  properties: {
+    roleDefinitionId: '${cosmosAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002' // Built-in Data Contributor
+    principalId: foundryProject.identity.principalId
+    scope: cosmosAccount.id
+  }
+}
+
+// Cosmos DB data-plane: Built-in Data Contributor for AI Services account identity
+resource cosmosDataContributorAiServices 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
+  parent: cosmosAccount
+  name: guid(cosmosAccount.id, aiServicesAccount.id, '00000000-0000-0000-0000-000000000002')
+  properties: {
+    roleDefinitionId: '${cosmosAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002' // Built-in Data Contributor
+    principalId: aiServicesAccount.identity.principalId
+    scope: cosmosAccount.id
+  }
+}
+
 // ============================================================================
 // Capability Host (Project-level only — per official Microsoft pattern)
 //
@@ -363,6 +388,8 @@ resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/ca
     searchIndexDataContributor
     searchServiceContributor
     cosmosDbOperator
+    cosmosDataContributor
+    cosmosDataContributorAiServices
   ]
 }
 
@@ -397,6 +424,7 @@ resource aiServicesPeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroup
     privateDnsZoneConfigs: [
       { name: 'cognitiveservices', properties: { privateDnsZoneId: cognitiveServicesDnsZoneId } }
       { name: 'openai', properties: { privateDnsZoneId: openAiDnsZoneId } }
+      { name: 'aiservices', properties: { privateDnsZoneId: aiServicesDnsZoneId } }
     ]
   }
 }
@@ -512,10 +540,16 @@ resource apimGatewayConnection 'Microsoft.CognitiveServices/accounts/connections
     name: 'apim-gateway'
     properties: {
       category: 'ApiManagement'
-      target: apimGatewayUrl
+      target: '${apimGatewayUrl}/openai'
       authType: 'ApiKey'
       credentials: {
         key: apimSubscriptionKey
+      }
+      metadata: {
+        deploymentInPath: 'true'
+        inferenceApiVersion: '2024-10-21'
+        provider: 'AzureOpenAI'
+        staticModels: '[{"name":"gpt-4o","properties":{"model":{"name":"gpt-4o","version":"2024-11-20","format":"OpenAI"}}}]'
       }
     }
   }
@@ -531,3 +565,4 @@ output foundryProjectId string = foundryProject.id
 output foundryProjectName string = foundryProject.name
 output foundryPrincipalId string = aiServicesAccount.identity.principalId
 output projectPrincipalId string = foundryProject.identity.principalId
+output projectEndpoint string = 'https://${aiServicesAccount.name}.services.ai.azure.com/api/projects/${foundryProject.name}'

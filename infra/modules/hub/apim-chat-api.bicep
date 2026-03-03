@@ -16,7 +16,7 @@ param chatAppFqdn string
 // Reference existing APIM
 // ============================================================================
 
-resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = {
+resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' existing = {
   name: apimName
 }
 
@@ -24,7 +24,7 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = {
 // Backend — Spoke Container App
 // ============================================================================
 
-resource chatBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+resource chatBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-preview' = {
   parent: apim
   name: 'chat-app-backend'
   properties: {
@@ -41,7 +41,7 @@ resource chatBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
 // API — Chat App (path prefix: /chat)
 // ============================================================================
 
-resource chatApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
+resource chatApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
   parent: apim
   name: 'chat-app-api'
   properties: {
@@ -57,7 +57,7 @@ resource chatApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
 // Operations
 // ============================================================================
 
-resource getFrontend 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource getFrontend 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: chatApi
   name: 'get-frontend'
   properties: {
@@ -67,7 +67,7 @@ resource getFrontend 'Microsoft.ApiManagement/service/apis/operations@2024-05-01
   }
 }
 
-resource getHealth 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource getHealth 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: chatApi
   name: 'get-health'
   properties: {
@@ -77,7 +77,7 @@ resource getHealth 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' 
   }
 }
 
-resource postChat 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+resource postChat 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: chatApi
   name: 'post-chat'
   properties: {
@@ -87,11 +87,41 @@ resource postChat 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' =
   }
 }
 
+resource getModels 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: chatApi
+  name: 'get-models'
+  properties: {
+    displayName: 'List Discovered Models'
+    method: 'GET'
+    urlTemplate: '/api/models'
+  }
+}
+
+resource postAgentChat 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: chatApi
+  name: 'post-agent-chat'
+  properties: {
+    displayName: 'Agent Chat API'
+    method: 'POST'
+    urlTemplate: '/api/agent/chat'
+  }
+}
+
+resource getStaticAssets 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: chatApi
+  name: 'get-static'
+  properties: {
+    displayName: 'Static Assets'
+    method: 'GET'
+    urlTemplate: '/static/*'
+  }
+}
+
 // ============================================================================
 // API-level policy — forward to backend, set CORS for browser access
 // ============================================================================
 
-resource chatApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = {
+resource chatApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview' = {
   parent: chatApi
   name: 'policy'
   properties: {

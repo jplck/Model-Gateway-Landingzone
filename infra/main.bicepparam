@@ -3,7 +3,7 @@ using './main.bicep'
 param location = readEnvironmentVariable('AZURE_LOCATION', 'swedencentral')
 param environmentName = readEnvironmentVariable('AZURE_ENV_NAME', 'dev')
 param projectName = 'aigw'
-param deploySpokeFoundry = false
+param deploySpokeFoundry = true
 param publisherEmail = readEnvironmentVariable('APIM_PUBLISHER_EMAIL', 'admin@contoso.com')
 param publisherName = 'AI Gateway Team'
 param hubResourceGroupName = readEnvironmentVariable('AZURE_HUB_RESOURCE_GROUP', 'rg-${readEnvironmentVariable('AZURE_ENV_NAME', 'dev')}-aigw-hub')

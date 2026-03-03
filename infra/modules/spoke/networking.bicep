@@ -106,9 +106,9 @@ var agentSubnetDef = deployAgentSubnet
           networkSecurityGroup: { id: agentNsg.id }
           delegations: [
             {
-              name: 'Microsoft.CognitiveServices.accounts'
+              name: 'Microsoft.App.environments'
               properties: {
-                serviceName: 'Microsoft.CognitiveServices/accounts'
+                serviceName: 'Microsoft.App/environments'
               }
             }
           ]

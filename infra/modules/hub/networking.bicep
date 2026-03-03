@@ -37,42 +37,29 @@ resource apimNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   properties: {
     securityRules: [
       {
-        name: 'Allow-HTTPS-Inbound'
+        name: 'Allow-Storage-Outbound'
         properties: {
           priority: 100
-          direction: 'Inbound'
+          direction: 'Outbound'
           access: 'Allow'
           protocol: 'Tcp'
-          sourceAddressPrefix: 'Internet'
+          sourceAddressPrefix: 'VirtualNetwork'
           sourcePortRange: '*'
-          destinationAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'Storage'
           destinationPortRange: '443'
         }
       }
       {
-        name: 'Allow-APIM-Management'
+        name: 'Allow-KeyVault-Outbound'
         properties: {
           priority: 110
-          direction: 'Inbound'
+          direction: 'Outbound'
           access: 'Allow'
           protocol: 'Tcp'
-          sourceAddressPrefix: 'ApiManagement'
+          sourceAddressPrefix: 'VirtualNetwork'
           sourcePortRange: '*'
-          destinationAddressPrefix: 'VirtualNetwork'
-          destinationPortRange: '3443'
-        }
-      }
-      {
-        name: 'Allow-LoadBalancer'
-        properties: {
-          priority: 120
-          direction: 'Inbound'
-          access: 'Allow'
-          protocol: '*'
-          sourceAddressPrefix: 'AzureLoadBalancer'
-          sourcePortRange: '*'
-          destinationAddressPrefix: 'VirtualNetwork'
-          destinationPortRange: '6390'
+          destinationAddressPrefix: 'AzureKeyVault'
+          destinationPortRange: '443'
         }
       }
     ]
@@ -109,6 +96,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         properties: {
           addressPrefix: apimSubnetPrefix
           networkSecurityGroup: { id: apimNsg.id }
+          delegations: [
+            {
+              name: 'Microsoft.Web.serverFarms'
+              properties: {
+                serviceName: 'Microsoft.Web/serverFarms'
+              }
+            }
+          ]
         }
       }
       {
