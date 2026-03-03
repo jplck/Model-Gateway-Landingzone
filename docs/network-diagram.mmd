@@ -1,0 +1,96 @@
+flowchart TB
+    subgraph Internet["🌐 Internet"]
+        Browser["Browser"]
+    end
+
+    subgraph HubRG["Hub Resource Group (rg-*-hub)"]
+        subgraph HubVNet["Hub VNet — 10.0.0.0/16"]
+            subgraph SnetApim["snet-apim — 10.0.1.0/24"]
+                APIM["APIM\n(External VNet Integration)\nDeveloper SKU"]
+            end
+            subgraph SnetPeHub["snet-pe — 10.0.2.0/24"]
+                PE_AIS["PE: AI Services"]
+                PE_Storage["PE: Storage"]
+                PE_Search["PE: AI Search"]
+                PE_Cosmos["PE: Cosmos DB"]
+            end
+            subgraph SnetAgent["snet-agent — 10.0.3.0/24"]
+                AgentDel["Delegated:\nMicrosoft.App/environments"]
+            end
+        end
+
+        subgraph HubServices["Hub PaaS Services"]
+            Foundry["AI Foundry\n(Cognitive Services)\ngpt-4o"]
+            StorageAcct["Storage Account\n(ADLS Gen2)"]
+            SearchSvc["AI Search\n(Basic)"]
+            CosmosAcct["Cosmos DB\n(Serverless)"]
+        end
+
+        subgraph DNS["Private DNS Zones (7 zones)"]
+            DNS_CS["privatelink.cognitiveservices.azure.com"]
+            DNS_OAI["privatelink.openai.azure.com"]
+            DNS_Blob["privatelink.blob.core.windows.net"]
+            DNS_Search["privatelink.search.windows.net"]
+            DNS_Cosmos["privatelink.documents.azure.com"]
+            DNS_CAE["privatelink.*.azurecontainerapps.io\n(includes wildcard A record)"]
+        end
+
+        subgraph Observability["Observability"]
+            LAW["Log Analytics"]
+            AppIns["App Insights"]
+        end
+    end
+
+    subgraph SpokeRG["Spoke Resource Group (rg-*-spoke)"]
+        subgraph SpokeVNet["Spoke VNet — 10.1.0.0/16"]
+            subgraph SnetCA["snet-container-apps — 10.1.0.0/23\n(Delegated: Microsoft.App/environments)"]
+                subgraph CAE["Container Apps Environment\npublicNetworkAccess: Disabled"]
+                    ChatApp["Chat Agent\nFastAPI + LangChain\nPort 8000"]
+                end
+            end
+            subgraph SnetPeSpoke["snet-pe — 10.1.2.0/24"]
+                PE_CAE["PE: CAE\nIP: 10.1.2.4"]
+            end
+        end
+        ACR["Azure Container Registry\n(Basic SKU)"]
+    end
+
+    Browser -->|"HTTPS :443\n/chat/* (no sub key)\n/openai/* (sub key)"| APIM
+
+    APIM -->|"MI auth\n(Bearer token)"| PE_AIS
+    PE_AIS -.->|"Private Link"| Foundry
+
+    APIM -->|"VNet peering +\nPrivate DNS\n→ 10.1.2.4"| PE_CAE
+    PE_CAE -.->|"Private Link"| ChatApp
+
+    ChatApp -->|"APIM sub key\nPOST /openai/deployments/gpt-4o/\nchat/completions"| APIM
+
+    ChatApp -.->|"AcrPull\n(Managed Identity)"| ACR
+
+    PE_Storage -.->|"Private Link"| StorageAcct
+    PE_Search -.->|"Private Link"| SearchSvc
+    PE_Cosmos -.->|"Private Link"| CosmosAcct
+
+    HubVNet <-->|"Bidirectional\nVNet Peering"| SpokeVNet
+
+    DNS_CAE -.->|"*.env-prefix → 10.1.2.4"| PE_CAE
+
+    APIM -->|"Logs + Metrics"| AppIns
+    AppIns -->|"Workspace"| LAW
+    CAE -->|"Container Logs"| LAW
+
+    classDef hubnet fill:#e1f0ff,stroke:#4a90d9,color:#000
+    classDef spokenet fill:#fff3e0,stroke:#f5a623,color:#000
+    classDef service fill:#e8f5e9,stroke:#4caf50,color:#000
+    classDef dns fill:#f3e5f5,stroke:#9c27b0,color:#000
+    classDef pe fill:#fce4ec,stroke:#e91e63,color:#000
+    classDef internet fill:#f5f5f5,stroke:#9e9e9e,color:#000
+    classDef obs fill:#e0f7fa,stroke:#00acc1,color:#000
+
+    class HubVNet,SnetApim,SnetPeHub,SnetAgent hubnet
+    class SpokeVNet,SnetCA,SnetPeSpoke spokenet
+    class Foundry,StorageAcct,SearchSvc,CosmosAcct,ACR,APIM,ChatApp service
+    class DNS,DNS_CS,DNS_OAI,DNS_Blob,DNS_Search,DNS_Cosmos,DNS_CAE dns
+    class PE_AIS,PE_Storage,PE_Search,PE_Cosmos,PE_CAE pe
+    class Browser internet
+    class LAW,AppIns obs
