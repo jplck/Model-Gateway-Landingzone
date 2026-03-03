@@ -69,7 +69,8 @@ param apimGatewayUrl string = ''
 @secure()
 @description('APIM subscription key for agent gateway connection')
 param apimSubscriptionKey string = ''
-
+@description('Application Insights connection string for tracing')
+param appInsightsConnectionString string = ''
 // ============================================================================
 // Types
 // ============================================================================
@@ -531,6 +532,27 @@ resource aiServicesDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
 }
 
 // ============================================================================
+// Application Insights Connection (tracing & telemetry)
+// ============================================================================
+
+resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' =
+  if (!empty(appInsightsConnectionString)) {
+    parent: foundryProject
+    name: 'appinsights'
+    properties: {
+      category: 'AppInsights'
+      target: appInsightsConnectionString
+      authType: 'ApiKey'
+      credentials: {
+        key: appInsightsConnectionString
+      }
+      metadata: {
+        ApiType: 'Azure'
+      }
+    }
+  }
+
+// ============================================================================
 // APIM Gateway Connection (spoke only — when apimGatewayUrl is provided)
 // ============================================================================
 
@@ -549,7 +571,6 @@ resource apimGatewayConnection 'Microsoft.CognitiveServices/accounts/connections
         deploymentInPath: 'true'
         inferenceApiVersion: '2024-10-21'
         provider: 'AzureOpenAI'
-        staticModels: '[{"name":"gpt-4o","properties":{"model":{"name":"gpt-4o","version":"2024-11-20","format":"OpenAI"}}}]'
       }
     }
   }

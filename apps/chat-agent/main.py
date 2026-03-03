@@ -95,7 +95,10 @@ def _get_or_create_agent(model_ref: str):
         from azure.ai.projects.models import PromptAgentDefinition
 
         client = _get_project_client()
-        agent_name = f"chat-{model_ref.replace('/', '-')}"
+        import re
+        safe = re.sub(r'[^a-zA-Z0-9-]', '-', model_ref)
+        safe = re.sub(r'-+', '-', safe).strip('-')[:63]
+        agent_name = f"chat-{safe}"
         agent = client.agents.create_version(
             agent_name=agent_name,
             definition=PromptAgentDefinition(

@@ -149,6 +149,7 @@ module hubFoundry 'modules/hub/foundry.bicep' = {
     searchDnsZoneId: hubDns.outputs.searchDnsZoneId
     cosmosDnsZoneId: hubDns.outputs.cosmosDnsZoneId
     modelDeployments: hubModelDeployments
+    appInsightsConnectionString: hubObservability.outputs.appInsightsConnectionString
   }
 }
 
@@ -319,6 +320,7 @@ module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
     modelDeployments: [] // Spoke uses hub models via APIM gateway
     apimGatewayUrl: hubApim.outputs.apimGatewayUrl
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
+    appInsightsConnectionString: hubObservability.outputs.appInsightsConnectionString
   }
 }
 
