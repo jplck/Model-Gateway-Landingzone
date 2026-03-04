@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # --------------------------------------------------------------------------
-# postprovision hook — builds the chat-agent image and deploys it
+# postprovision hook — builds images and deploys agents
 # Runs automatically after `azd provision` (or `azd up`).
 # Solves the chicken-and-egg: ACR must exist before we can push an image.
 # --------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="${SCRIPT_DIR}/../apps/chat-agent"
+CHAT_APP_DIR="${SCRIPT_DIR}/../apps/chat-agent"
+HOSTED_APP_DIR="${SCRIPT_DIR}/../apps/hosted-agent"
 
 # azd populates env vars from Bicep outputs (exact output names)
 # Use eval to load them from azd env
@@ -15,6 +16,8 @@ eval "$(azd env get-values 2>/dev/null | tr -d '\r')"
 
 ACR_LOGIN_SERVER="${acrLoginServer:-}"
 SPOKE_RG="${spokeResourceGroupName:-}"
+SPOKE_PROJECT="${spokeProjectEndpoint:-}"
+APIM_URL="${apimGatewayUrl:-}"
 
 if [[ -z "$ACR_LOGIN_SERVER" ]]; then
   echo "⏭️  acrLoginServer not set — skipping image build."
@@ -33,7 +36,7 @@ az acr build \
   --registry "$ACR_NAME" \
   --image "chat-agent:${TAG}" \
   --image "chat-agent:latest" \
-  "$APP_DIR" \
+  "$CHAT_APP_DIR" \
   --no-logs
 
 # Find the container app name (retry — it may still be provisioning)
@@ -73,3 +76,36 @@ azd env set CHAT_AGENT_IMAGE "$IMAGE" 2>/dev/null || true
 azd env set CHAT_AGENT_PORT "8000" 2>/dev/null || true
 
 echo "📝 CHAT_AGENT_IMAGE=${IMAGE} saved to azd env"
+
+# ==========================================================================
+# Build & register hosted agent image (LangGraph container)
+# ==========================================================================
+
+HOSTED_IMAGE="${ACR_LOGIN_SERVER}/hosted-agent:${TAG}"
+
+echo "🔨 Building hosted-agent image: ${HOSTED_IMAGE}"
+az acr build \
+  --registry "$ACR_NAME" \
+  --image "hosted-agent:${TAG}" \
+  --image "hosted-agent:latest" \
+  "$HOSTED_APP_DIR" \
+  --no-logs
+
+azd env set HOSTED_AGENT_IMAGE "$HOSTED_IMAGE" 2>/dev/null || true
+echo "📝 HOSTED_AGENT_IMAGE=${HOSTED_IMAGE} saved to azd env"
+
+# Register the hosted agent with Foundry (ImageBasedHostedAgentDefinition)
+if [[ -n "$SPOKE_PROJECT" ]]; then
+  echo "📦 Registering hosted agent with Foundry..."
+  export AI_PROJECT_ENDPOINT="$SPOKE_PROJECT"
+  export HOSTED_AGENT_IMAGE="$HOSTED_IMAGE"
+  export APIM_GATEWAY_URL="${APIM_URL}"
+  export GATEWAY_CONNECTION_NAME="apim-gateway"
+
+  pip install --quiet azure-ai-projects azure-identity 2>/dev/null || true
+  python3 "${SCRIPT_DIR}/deploy_hosted_agent.py" || {
+    echo "⚠️  Hosted agent registration failed — image built but not registered."
+  }
+else
+  echo "⏭️  spokeProjectEndpoint not set — skipping hosted agent registration."
+fi

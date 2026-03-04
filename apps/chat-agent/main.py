@@ -1,16 +1,18 @@
 """
-Chat Agent — Dual-mode FastAPI app for the AI Gateway Landing Zone.
+Chat Agent — Triple-mode FastAPI app for the AI Gateway Landing Zone.
 
 Modes:
   1. Direct Inference — OpenAI SDK → APIM → Hub Foundry (API key auth)
   2. Foundry Agent    — PromptAgent SDK → Agent Service → APIM Gateway → Hub Foundry
+  3. Hosted Agent     — ImageBasedHostedAgent (LangGraph container) → APIM Gateway → Hub Foundry
 
 Routes:
-  GET  /              → Chat UI (static HTML)
-  GET  /api/models    → Discover deployed models via APIM gateway
-  POST /api/chat      → Direct inference (OpenAI SDK)
-  POST /api/agent/chat→ Foundry Agent (Agent SDK v2)
-  GET  /health        → Health check
+  GET  /               → Chat UI (static HTML)
+  GET  /api/models     → Discover deployed models via APIM gateway
+  POST /api/chat       → Direct inference (OpenAI SDK)
+  POST /api/agent/chat → Foundry Agent (Agent SDK v2)
+  POST /api/hosted/chat→ Hosted Agent (LangGraph image-based)
+  GET  /health         → Health check
 """
 
 import os
@@ -25,7 +27,7 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("chat-agent")
 
-app = FastAPI(title="Chat Agent", version="2.0.0")
+app = FastAPI(title="Chat Agent", version="3.0.0")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -142,6 +144,17 @@ class AgentChatResponse(BaseModel):
     thread_id: str
 
 
+class HostedChatRequest(BaseModel):
+    message: str
+    model: str = "gpt-4o"
+    thread_id: str | None = None
+
+
+class HostedChatResponse(BaseModel):
+    reply: str
+    thread_id: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -160,6 +173,7 @@ async def health():
         "status": "ok",
         "llm_configured": oai_direct is not None,
         "agent_configured": bool(AI_PROJECT_ENDPOINT),
+        "hosted_agent_configured": bool(AI_PROJECT_ENDPOINT),
         "deployment": DEPLOYMENT_NAME,
         "gateway": APIM_GATEWAY_URL,
         "project_endpoint": AI_PROJECT_ENDPOINT,
@@ -273,3 +287,59 @@ def agent_chat(req: AgentChatRequest):
     except Exception as e:
         logger.exception("Agent call failed")
         raise HTTPException(502, f"Agent error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Hosted Agent — ImageBasedHostedAgent invoked via Responses API
+# ---------------------------------------------------------------------------
+
+HOSTED_AGENT_NAME = os.environ.get("HOSTED_AGENT_NAME", "gw-hosted-agent")
+
+
+@app.post("/api/hosted/chat", response_model=HostedChatResponse)
+def hosted_chat(req: HostedChatRequest):
+    """Chat via Hosted Agent (LangGraph image) → APIM Gateway → Hub Foundry.
+
+    The hosted agent is a container-based agent registered with Foundry
+    as an ImageBasedHostedAgentDefinition. It runs a LangGraph agent
+    with tools (get_current_time, roll_dice, calculate) and uses the
+    BYO APIM gateway for model access.
+    """
+    client = _get_project_client()
+    if not client:
+        raise HTTPException(503, "Agent not configured. Set AI_PROJECT_ENDPOINT.")
+
+    model_ref = f"{GATEWAY_CONNECTION_NAME}/{req.model}"
+
+    try:
+        oai = _get_openai_client()
+
+        kwargs = {
+            "model": model_ref,
+            "input": req.message,
+            "extra_body": {
+                "agent_reference": {
+                    "name": HOSTED_AGENT_NAME,
+                    "type": "agent_reference",
+                }
+            },
+        }
+        if req.thread_id:
+            kwargs["previous_response_id"] = req.thread_id
+
+        conv = oai.responses.create(**kwargs)
+
+        reply = ""
+        for output in conv.output:
+            if output.type == "message":
+                for content in output.content:
+                    if content.type == "output_text":
+                        reply = content.text
+
+        return HostedChatResponse(reply=reply, thread_id=conv.id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Hosted agent call failed")
+        raise HTTPException(502, f"Hosted agent error: {e}")

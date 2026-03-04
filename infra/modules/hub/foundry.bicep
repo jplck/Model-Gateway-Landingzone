@@ -71,6 +71,12 @@ param apimGatewayUrl string = ''
 param apimSubscriptionKey string = ''
 @description('Application Insights connection string for tracing')
 param appInsightsConnectionString string = ''
+
+@description('ACR login server for hosted agent image pull (leave empty to skip)')
+param acrLoginServer string = ''
+
+@description('Enable hosted agent deployment (adds account-level capability host)')
+param enableHostedAgents bool = false
 // ============================================================================
 // Types
 // ============================================================================
@@ -368,12 +374,26 @@ resource cosmosDataContributorAiServices 'Microsoft.DocumentDB/databaseAccounts/
 }
 
 // ============================================================================
-// Capability Host (Project-level only — per official Microsoft pattern)
+// Capability Hosts
 //
-// Only a project-level capability host is created. It gets all connections
-// and depends on RBAC assignments for propagation window.
+// Two levels:
+//   1. Account-level — enables hosted agent container execution
+//      (enablePublicHostingEnvironment = true when no BYO network)
+//   2. Project-level — wires storage/search/cosmos connections for Agent Service
 // ============================================================================
 
+// Account-level capability host (required for hosted agents / image-based agents)
+resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview' =
+  if (enableHostedAgents) {
+    parent: aiServicesAccount
+    name: 'agents'
+    properties: {
+      capabilityHostKind: 'Agents'
+      enablePublicHostingEnvironment: true
+    }
+  }
+
+// Project-level capability host (wires backing stores for Agent Service)
 resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: foundryProject
   name: 'caphost'
@@ -391,6 +411,7 @@ resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/ca
     cosmosDbOperator
     cosmosDataContributor
     cosmosDataContributorAiServices
+    accountCapabilityHost
   ]
 }
 
@@ -571,6 +592,24 @@ resource apimGatewayConnection 'Microsoft.CognitiveServices/accounts/connections
         deploymentInPath: 'true'
         inferenceApiVersion: '2024-10-21'
         provider: 'AzureOpenAI'
+      }
+    }
+  }
+
+// ============================================================================
+// ACR Connection (spoke only — for hosted agent image pull)
+// ============================================================================
+
+resource acrConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' =
+  if (!empty(acrLoginServer)) {
+    parent: foundryProject
+    name: 'acr-connection'
+    properties: {
+      category: 'ContainerRegistry'
+      target: 'https://${acrLoginServer}'
+      authType: 'ManagedIdentity'
+      metadata: {
+        ApiType: 'Azure'
       }
     }
   }

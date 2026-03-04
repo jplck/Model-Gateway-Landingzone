@@ -107,6 +107,16 @@ resource postAgentChat 'Microsoft.ApiManagement/service/apis/operations@2024-06-
   }
 }
 
+resource postHostedChat 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: chatApi
+  name: 'post-hosted-chat'
+  properties: {
+    displayName: 'Hosted Agent Chat API'
+    method: 'POST'
+    urlTemplate: '/api/hosted/chat'
+  }
+}
+
 resource getStaticAssets 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: chatApi
   name: 'get-static'

@@ -64,9 +64,10 @@
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="direct" onclick="switchTab('direct')">Direct Inference</button>
   <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')">Foundry Agent</button>
+  <button class="tab-btn" data-tab="hosted" onclick="switchTab('hosted')">Hosted Agent</button>
 </div>
 
-<!-- Model selector (agent tab only) -->
+<!-- Model selector (agent / hosted tabs) -->
 <div class="model-bar hidden" id="modelBar">
   <label for="modelSelect">Model:</label>
   <select id="modelSelect"><option value="">Loading…</option></select>
@@ -100,6 +101,10 @@ const state = {
     threadId: null,
     elements: [],
   },
+  hosted: {
+    threadId: null,
+    elements: [],
+  },
 };
 
 let discoveredModels = [];
@@ -118,21 +123,25 @@ const flowInfo      = document.getElementById('flowInfo');
 function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  modelBar.classList.toggle('hidden', tab !== 'agent');
+  modelBar.classList.toggle('hidden', tab === 'direct');
 
   // Update flow labels
   if (tab === 'direct') {
     flowBadge.textContent = 'Spoke → APIM → Hub Foundry';
     flowInfo.innerHTML = 'Flow: Browser → APIM (<code>/chat</code>) → Container App → APIM (<code>/openai</code>) → Foundry (gpt-4o)';
-  } else {
+  } else if (tab === 'agent') {
     const m = modelSelect.value || '…';
     flowBadge.textContent = 'Spoke → Agent Service → APIM GW → Hub Foundry';
     flowInfo.innerHTML = `Flow: Browser → APIM (<code>/chat</code>) → Container App → Agent Service → APIM Gateway → Foundry (${m})`;
+  } else {
+    const m = modelSelect.value || '…';
+    flowBadge.textContent = 'Spoke → Hosted Agent (LangGraph) → APIM GW → Hub Foundry';
+    flowInfo.innerHTML = `Flow: Browser → APIM (<code>/chat</code>) → Container App → Hosted Agent (LangGraph image) → APIM Gateway → Foundry (${m})`;
   }
 
   renderChat();
 
-  if (tab === 'agent' && discoveredModels.length === 0) {
+  if ((tab === 'agent' || tab === 'hosted') && discoveredModels.length === 0) {
     loadModels();
   }
 }
@@ -140,11 +149,16 @@ function switchTab(tab) {
 // ---- Chat rendering ----
 function renderChat() {
   chatContainer.innerHTML = '';
-  const elems = activeTab === 'direct' ? state.direct.elements : state.agent.elements;
+  const elems = state[activeTab].elements;
   if (elems.length === 0) {
-    const greeting = activeTab === 'direct'
-      ? "Hello! I'm calling the hub model directly through the APIM gateway via LangChain. Ask me anything."
-      : "Hello! I'm using the Foundry Agent Service with auto-discovered models routed through the APIM gateway. Select a model above and ask me anything.";
+    let greeting;
+    if (activeTab === 'direct') {
+      greeting = "Hello! I'm calling the hub model directly through the APIM gateway via the OpenAI SDK. Ask me anything.";
+    } else if (activeTab === 'agent') {
+      greeting = "Hello! I'm using the Foundry Agent Service with auto-discovered models routed through the APIM gateway. Select a model above and ask me anything.";
+    } else {
+      greeting = "Hello! I'm a hosted agent — a LangGraph container running inside Foundry Agent Service. I have tools: get_current_time, roll_dice, and calculate. Select a model above and try me!";
+    }
     addMessage('assistant', greeting);
   } else {
     elems.forEach(el => chatContainer.appendChild(el));
@@ -166,7 +180,7 @@ function addMessage(role, content) {
   chatContainer.appendChild(div);
   chatContainer.scrollTop = chatContainer.scrollHeight;
   // persist element reference
-  (activeTab === 'direct' ? state.direct.elements : state.agent.elements).push(div);
+  state[activeTab].elements.push(div);
   return div;
 }
 
@@ -224,8 +238,8 @@ async function loadModels() {
 }
 
 modelSelect.addEventListener('change', () => {
-  if (activeTab === 'agent') {
-    flowInfo.innerHTML = `Flow: Browser → APIM (<code>/chat</code>) → Container App → Agent Service → APIM Gateway → Foundry (${modelSelect.value})`;
+  if (activeTab === 'agent' || activeTab === 'hosted') {
+    flowInfo.innerHTML = `Flow: Browser → APIM (<code>/chat</code>) → Container App → ${activeTab === 'hosted' ? 'Hosted Agent (LangGraph)' : 'Agent Service'} → APIM Gateway → Foundry (${modelSelect.value})`;
   }
 });
 
@@ -244,8 +258,10 @@ async function sendMessage() {
   try {
     if (activeTab === 'direct') {
       await sendDirect(text);
-    } else {
+    } else if (activeTab === 'agent') {
       await sendAgent(text);
+    } else {
+      await sendHosted(text);
     }
   } catch (e) {
     removeTyping();
@@ -308,6 +324,37 @@ async function sendAgent(text) {
     const data = await res.json();
     addMessage('assistant', data.reply);
     state.agent.threadId = data.thread_id;
+  }
+}
+
+async function sendHosted(text) {
+  const model = modelSelect.value;
+  if (!model) {
+    removeTyping();
+    addMessage('error', 'Please select a model first.');
+    return;
+  }
+
+  const body = { message: text, model: model };
+  if (state.hosted.threadId) {
+    body.thread_id = state.hosted.threadId;
+  }
+
+  const res = await fetch(`${API_BASE}/api/hosted/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  removeTyping();
+
+  if (!res.ok) {
+    const err = await res.text();
+    addMessage('error', `Error ${res.status}: ${err}`);
+  } else {
+    const data = await res.json();
+    addMessage('assistant', data.reply);
+    state.hosted.threadId = data.thread_id;
   }
 }
 

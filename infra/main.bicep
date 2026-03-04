@@ -78,6 +78,10 @@ var dnsZoneNames = [
   'privatelink.documents.azure.com'
 ]
 
+// Compute the ACR name deterministically (must match container-apps.bicep logic)
+// container-apps.bicep uses: take('acr${projectName}${uniqueString(resourceGroup().id)}', 50)
+var spokeAcrName = take('acr${projectName}${uniqueString(spokeRg.id)}', 50)
+
 // ============================================================================
 // Resource Groups
 // ============================================================================
@@ -321,6 +325,8 @@ module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
     apimGatewayUrl: hubApim.outputs.apimGatewayUrl
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
     appInsightsConnectionString: hubObservability.outputs.appInsightsConnectionString
+    acrLoginServer: '${spokeAcrName}.azurecr.io'
+    enableHostedAgents: true
   }
 }
 
@@ -335,6 +341,20 @@ module containerAppFoundryRole 'modules/spoke/foundry-role.bicep' = if (deploySp
     foundryAccountName: deploySpokeFoundry ? spokeFoundry.outputs.foundryAccountName : ''
     principalId: spokeContainerApps.outputs.sampleAppPrincipalId
   }
+}
+
+// ============================================================================
+// Phase 8c — Foundry Project → ACR Pull RBAC (hosted agent image pull)
+// ============================================================================
+
+// AcrPull role so the Foundry project identity can pull hosted agent images
+module foundryAcrPullRole 'modules/spoke/acr-pull-role.bicep' = if (deploySpokeFoundry) {
+  scope: spokeRg
+  params: {
+    acrName: spokeAcrName
+    principalId: deploySpokeFoundry ? spokeFoundry.outputs.projectPrincipalId : ''
+  }
+  dependsOn: [spokeContainerApps]
 }
 
 // ============================================================================
