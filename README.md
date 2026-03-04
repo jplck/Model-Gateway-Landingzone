@@ -4,7 +4,9 @@ Hub-and-spoke architecture on Azure providing a central AI model gateway (API Ma
 
 ## Architecture
 
-See [architecture.drawio](architecture.drawio) for the full infrastructure diagram (open with [draw.io](https://app.diagrams.net/) or the VS Code draw.io extension).
+![Architecture](architecture.png)
+
+See [architecture.drawio](architecture.drawio) for the editable diagram (open with [draw.io](https://app.diagrams.net/) or the VS Code draw.io extension).
 
 ### Traffic Flows
 
