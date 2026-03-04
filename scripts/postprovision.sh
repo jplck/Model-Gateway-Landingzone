@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${SCRIPT_DIR}/../apps/chat-agent"
 
 # azd populates env vars from Bicep outputs (exact output names)
+# Use eval to load them from azd env
+eval "$(azd env get-values 2>/dev/null | tr -d '\r')"
+
 ACR_LOGIN_SERVER="${acrLoginServer:-}"
 SPOKE_RG="${spokeResourceGroupName:-}"
 
@@ -33,18 +36,34 @@ az acr build \
   "$APP_DIR" \
   --no-logs
 
-# Find the container app name
-CA_NAME=$(az containerapp list -g "$SPOKE_RG" --query "[0].name" -o tsv 2>/dev/null || true)
+# Find the container app name (retry — it may still be provisioning)
+CA_NAME=""
+for i in 1 2 3 4 5; do
+  CA_NAME=$(az containerapp list -g "$SPOKE_RG" --query "[0].name" -o tsv 2>/dev/null | tr -d '\r' || true)
+  if [[ -n "$CA_NAME" ]]; then
+    break
+  fi
+  echo "⏳ Waiting for container app to appear (attempt $i/5)..."
+  sleep 10
+done
 
 if [[ -n "$CA_NAME" ]]; then
   echo "🚀 Deploying ${IMAGE} to ${CA_NAME}"
+  # Wait a moment for the revision to stabilize
+  sleep 5
   az containerapp update \
     --name "$CA_NAME" \
     --resource-group "$SPOKE_RG" \
     --image "$IMAGE" \
+    --set-env-vars "PORT=8000" \
+    --output none
+  az containerapp ingress update \
+    --name "$CA_NAME" \
+    --resource-group "$SPOKE_RG" \
+    --target-port 8000 \
     --output none
 
-  echo "✅ Container app updated to ${IMAGE}"
+  echo "✅ Container app updated to ${IMAGE} (port 8000)"
 else
   echo "⚠️  No container app found in ${SPOKE_RG} — image built but not deployed."
 fi
