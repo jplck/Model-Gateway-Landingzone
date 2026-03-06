@@ -35,7 +35,7 @@ app = FastAPI(title="Chat Agent", version="3.0.0")
 
 APIM_GATEWAY_URL = os.environ.get("APIM_GATEWAY_URL", "")
 APIM_API_KEY = os.environ.get("APIM_API_KEY", "")
-DEPLOYMENT_NAME = os.environ.get("OPENAI_DEPLOYMENT_NAME", "gpt-4o")
+DEPLOYMENT_NAME = os.environ.get("OPENAI_DEPLOYMENT_NAME", "gpt-4.1")
 API_VERSION = os.environ.get("OPENAI_API_VERSION", "2024-10-21")
 AI_PROJECT_ENDPOINT = os.environ.get("AI_PROJECT_ENDPOINT", "")
 GATEWAY_CONNECTION_NAME = os.environ.get("GATEWAY_CONNECTION_NAME", "apim-gateway")
@@ -127,6 +127,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    model: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -222,7 +223,7 @@ def chat(req: ChatRequest):
 
     try:
         response = oai_direct.chat.completions.create(
-            model=DEPLOYMENT_NAME,
+            model=req.model or DEPLOYMENT_NAME,
             messages=messages,
             temperature=0.7,
             max_tokens=1024,

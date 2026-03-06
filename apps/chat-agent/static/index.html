@@ -38,6 +38,7 @@
   .bubble { padding: 12px 16px; border-radius: 16px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
   .message.user .bubble { background: #4361ee; color: #fff; border-bottom-right-radius: 4px; }
   .message.assistant .bubble { background: #fff; color: #1a1a2e; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .message.assistant .bubble img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
   .message.error .bubble { background: #fee; color: #c00; border: 1px solid #fcc; }
   .typing .bubble::after { content: '●●●'; animation: blink 1.2s infinite; }
   @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
@@ -64,7 +65,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="direct" onclick="switchTab('direct')">Direct Inference</button>
   <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')">Foundry Agent</button>
-  <button class="tab-btn" data-tab="hosted" onclick="switchTab('hosted')">Hosted Agent</button>
+  <button class="tab-btn" data-tab="hosted" onclick="switchTab('hosted')" style="display:none">Hosted Agent</button>
 </div>
 
 <!-- Model selector (agent / hosted tabs) -->
@@ -72,6 +73,12 @@
   <label for="modelSelect">Model:</label>
   <select id="modelSelect"><option value="">Loading…</option></select>
   <span class="status" id="modelStatus"></span>
+</div>
+
+<!-- Deployment name (direct tab) -->
+<div class="model-bar" id="directModelBar">
+  <label for="directModel">Deployment:</label>
+  <input id="directModel" type="text" value="gpt-4.1" style="padding:6px 12px; border:1px solid #d0d5dd; border-radius:8px; font-size:13px; min-width:180px;">
 </div>
 
 <div class="chat-container" id="chatContainer"></div>
@@ -124,11 +131,13 @@ function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   modelBar.classList.toggle('hidden', tab === 'direct');
+  document.getElementById('directModelBar').classList.toggle('hidden', tab !== 'direct');
 
   // Update flow labels
   if (tab === 'direct') {
+    const dm = document.getElementById('directModel').value || 'gpt-4.1';
     flowBadge.textContent = 'Spoke → APIM → Hub Foundry';
-    flowInfo.innerHTML = 'Flow: Browser → APIM (<code>/chat</code>) → Container App → APIM (<code>/openai</code>) → Foundry (gpt-4o)';
+    flowInfo.innerHTML = `Flow: Browser → APIM (<code>/chat</code>) → Container App → APIM (<code>/openai</code>) → Foundry (${dm})`;
   } else if (tab === 'agent') {
     const m = modelSelect.value || '…';
     flowBadge.textContent = 'Spoke → Agent Service → APIM GW → Hub Foundry';
@@ -174,12 +183,21 @@ function addMessage(role, content) {
   avatar.textContent = role === 'user' ? 'You' : 'AI';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = content;
+  // Support image responses (data URIs or URLs)
+  if (typeof content === 'string' && /^(data:image|https?:\/\/.+\.(png|jpg|jpeg|gif|webp|svg))/i.test(content)) {
+    const img = document.createElement('img');
+    img.src = content;
+    img.alt = 'Generated image';
+    bubble.appendChild(img);
+  } else if (typeof content === 'string' && content.includes('<img ')) {
+    bubble.innerHTML = content;
+  } else {
+    bubble.textContent = content;
+  }
   div.appendChild(avatar);
   div.appendChild(bubble);
   chatContainer.appendChild(div);
   chatContainer.scrollTop = chatContainer.scrollHeight;
-  // persist element reference
   state[activeTab].elements.push(div);
   return div;
 }
@@ -274,11 +292,12 @@ async function sendMessage() {
 
 async function sendDirect(text) {
   state.direct.history.push({ role: 'user', content: text });
+  const deploymentName = document.getElementById('directModel').value.trim() || 'gpt-4.1';
 
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: state.direct.history }),
+    body: JSON.stringify({ messages: state.direct.history, model: deploymentName }),
   });
 
   removeTyping();

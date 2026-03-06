@@ -6,6 +6,12 @@ This repository implements a **hub-spoke AI Gateway Landing Zone** on Azure. The
 
 The entire infrastructure is defined in Bicep, deployed via Azure Developer CLI (`azd`), and follows a phased approach where each phase can be deployed incrementally.
 
+The chat agent application offers **three modes** of AI interaction:
+
+1. **Direct Inference** — OpenAI SDK → APIM → Hub Foundry (API key auth)
+2. **Foundry Agent** — PromptAgent SDK → Agent Service → APIM Gateway → Hub Foundry
+3. **Hosted Agent** — ImageBasedHostedAgent (LangGraph container) → APIM Gateway → Hub Foundry
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Internet                                                            │
@@ -46,10 +52,18 @@ The entire infrastructure is defined in Bicep, deployed via Azure Developer CLI 
 │  │  │ publicNetworkAccess: Disabled       │                │  │ │ │  │
 │  │  │                                     │                │  │ │ │  │
 │  │  │  ┌───────────────────────────────┐  │                │  │ │ │  │
-│  │  │  │ Chat Agent (FastAPI+LangChain)│  │                │  │ │ │  │
-│  │  │  │ external: true (within CAE)   │◄─┼────────────────┘  │ │ │  │
+│  │  │  │ Chat Agent (FastAPI+OpenAI)   │  │                │  │ │ │  │
+│  │  │  │ 3 modes: Direct/Agent/Hosted  │◄─┼────────────────┘  │ │ │  │
 │  │  │  │ Calls APIM /openai server-side│  │                   │ │ │  │
 │  │  │  └───────────────────────────────┘  │                   │ │ │  │
+│  │  └─────────────────────────────────────┘                   │ │ │  │
+│  │                                                             │ │ │  │
+│  │  ┌─────────────────────────────────────┐                   │ │ │  │
+│  │  │ Spoke AI Foundry (Agent Service)    │                   │ │ │  │
+│  │  │  • apim-gateway → APIM /openai      │                   │ │ │  │
+│  │  │  • acr-connection → spoke ACR        │                   │ │ │  │
+│  │  │  • Account + project cap hosts       │                   │ │ │  │
+│  │  │  • Hosted agent: gw-hosted-agent     │                   │ │ │  │
 │  │  └─────────────────────────────────────┘                   │ │ │  │
 │  │                                                             │ │ │  │
 │  │  ┌─────────────────────────────────────┐                   │ │ │  │
@@ -77,8 +91,10 @@ The `main.bicep` orchestrator is organized into numbered phases. Each can be dep
 | 5 | *(placeholder)* | Multi-backend load balancing — add more Foundry instances |
 | 6 | `spoke/networking`, `peering` x2, `dns-zone-link` x7 | Spoke VNet, bidirectional peering, DNS zone links |
 | 7 | `spoke/container-apps`, `cae-dns-wildcard` | ACR, Container Apps Environment, chat agent app, CAE private endpoint + wildcard DNS |
-| 7b | `hub/apim-chat-api` | APIM API exposing `/chat/*` → spoke container app |
-| 8 | `hub/foundry` (conditional) | Optional spoke Foundry for Agent Service |
+| 7b | `hub/apim-chat-api` | APIM API exposing `/chat/*` → spoke container app (7 operations) |
+| 8 | `hub/foundry` (conditional) | Spoke Foundry for Agent Service — with APIM gateway connection, ACR connection, account-level capability host (`enableHostedAgents: true`) |
+| 8b | `spoke/foundry-role` | Container App → Spoke Foundry RBAC (Azure AI Developer role) |
+| 8c | `spoke/acr-pull-role` | Foundry Project → ACR AcrPull RBAC (hosted agent image pull) |
 
 ---
 
@@ -88,7 +104,7 @@ The `main.bicep` orchestrator is organized into numbered phases. Each can be dep
 
 | Subnet | CIDR | Purpose | Notes |
 |--------|------|---------|-------|
-| `snet-apim` | `10.0.1.0/24` | APIM VNet integration | NSG allows 443 (HTTPS), 3443 (management), 6390 (LB) |
+| `snet-apim` | `10.0.1.0/24` | APIM VNet integration | Delegated to `Microsoft.Web/serverFarms`, NSG allows 443, 3443, 6390 |
 | `snet-pe` | `10.0.2.0/24` | Private endpoints | AI Services, Storage, Search, Cosmos DB |
 | `snet-agent` | `10.0.3.0/24` | AI Foundry agent subnet | Delegated to `Microsoft.App/environments` |
 
@@ -97,7 +113,7 @@ The `main.bicep` orchestrator is organized into numbered phases. Each can be dep
 | Subnet | CIDR | Purpose | Notes |
 |--------|------|---------|-------|
 | `snet-container-apps` | `10.1.0.0/23` | Container Apps Environment | Delegated to `Microsoft.App/environments`, /23 minimum |
-| `snet-pe` | `10.1.2.0/24` | Private endpoints | CAE Private Endpoint (IP: `10.1.2.4`) |
+| `snet-pe` | `10.1.2.0/24` | Private endpoints | CAE Private Endpoint (IP: `10.1.2.4`), spoke Foundry PEs |
 | `snet-agent` | `10.1.3.0/27` | Spoke Foundry agent | Conditional, only when `deploySpokeFoundry=true` |
 
 ### VNet Peering
@@ -153,7 +169,7 @@ This ensures **any** container app in the environment resolves to the private en
 
 ### VNet Integration (External Mode)
 
-APIM is deployed with `virtualNetworkType: 'External'`, which:
+APIM StandardV2 is deployed with `virtualNetworkType: 'External'`, which:
 - Places APIM's data plane inside `snet-apim` in the hub VNet
 - Keeps the public gateway URL (`https://apim-xxx.azure-api.net`) accessible from the internet
 - Enables APIM to resolve private DNS zones linked to the hub VNet
@@ -168,6 +184,8 @@ The primary API exposes OpenAI-compatible endpoints:
 | Chat Completions | POST | `/openai/deployments/{deployment-id}/chat/completions` |
 | Completions | POST | `/openai/deployments/{deployment-id}/completions` |
 | Embeddings | POST | `/openai/deployments/{deployment-id}/embeddings` |
+| List Deployments | GET | `/openai/deployments` |
+| Get Deployment | GET | `/openai/deployments/{deployment-id}` |
 
 **Authentication flow:**
 1. Spoke consumer sends request with `api-key` header (APIM subscription key)
@@ -187,11 +205,15 @@ The primary API exposes OpenAI-compatible endpoints:
 
 A separate API exposes the spoke chat agent through the hub gateway:
 
-| Operation | Method | URL Template |
-|-----------|--------|-------------|
-| Chat Frontend | GET | `/chat/` |
-| Health Check | GET | `/chat/health` |
-| Chat API | POST | `/chat/api/chat` |
+| Operation | Method | URL Template | Purpose |
+|-----------|--------|-------------|---------|
+| Get Chat Frontend | GET | `/` | Serves the HTML chat UI |
+| Health Check | GET | `/health` | Returns health + config status |
+| Chat API | POST | `/api/chat` | Direct inference (OpenAI SDK) |
+| List Models | GET | `/api/models` | Dynamic model discovery |
+| Agent Chat API | POST | `/api/agent/chat` | Foundry Agent (PromptAgent SDK) |
+| Hosted Agent Chat | POST | `/api/hosted/chat` | Hosted Agent (LangGraph image) |
+| Static Assets | GET | `/static/*` | CSS/JS assets for the UI |
 
 **No subscription required** — the chat frontend is publicly accessible through APIM. The chat agent authenticates to APIM's OpenAI API server-side using its own subscription key.
 
@@ -205,36 +227,67 @@ A `model-gateway` product groups the OpenAI API. A `spoke-subscription` provides
 
 ## AI Foundry (Capability Host Pattern)
 
-The Foundry module (`hub/foundry.bicep`) deploys the full Azure AI Foundry stack:
+The Foundry module (`hub/foundry.bicep`) is **reusable** for both hub and spoke deployments via the `instanceSuffix` parameter. It deploys the full Azure AI Foundry stack:
 
 ```
 AI Services Account (Microsoft.CognitiveServices/accounts, kind: AIServices)
-  └── gpt-4o deployment (GlobalStandard, 10 TPM)
-
-AI Foundry Hub (Microsoft.MachineLearningServices/workspaces, kind: Hub)
-  └── AI Foundry Project (kind: Project)
-       └── Capability Host
-            ├── Storage connection
-            ├── AI Search connection
-            ├── Cosmos DB connection
-            └── AI Services connection (+ optional APIM gateway connection)
+  ├── gpt-4o deployment (hub only — spoke uses hub models via APIM)
+  ├── Account-level Capability Host (conditional — enableHostedAgents)
+  │     └── capabilityHostKind: 'Agents', enablePublicHostingEnvironment: true
+  ├── APIM Gateway Connection (spoke only — apim-gateway)
+  └── AI Foundry Project (accounts/projects)
+       ├── Project-level Capability Host
+       │     ├── vectorStoreConnections → AI Search
+       │     ├── storageConnections → Storage
+       │     └── threadStorageConnections → Cosmos DB
+       ├── Connections:
+       │     ├── Storage (AzureStorageAccount, AAD auth)
+       │     ├── AI Search (CognitiveSearch, AAD auth)
+       │     ├── Cosmos DB (CosmosDB, AAD auth)
+       │     ├── App Insights (AppInsights, ApiKey auth) — conditional
+       │     └── ACR (ContainerRegistry, ManagedIdentity) — spoke only
+       └── RBAC assignments (6 total — project + account identities → backing resources)
 ```
 
-**Supporting resources:**
-- Storage Account (HierarchicalNamespace for ADLS Gen2)
-- AI Search (Basic SKU)
-- Cosmos DB (Serverless, NoSQL)
+### Two Capability Host Levels
 
-**Private endpoints** (4 total, all in `snet-pe`):
-- AI Services → `privatelink.cognitiveservices.azure.com` + `privatelink.openai.azure.com`
-- Storage → `privatelink.blob.core.windows.net`
-- AI Search → `privatelink.search.windows.net`
-- Cosmos DB → `privatelink.documents.azure.com`
+1. **Account-level** (`Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview`) — Only deployed when `enableHostedAgents: true` (spoke Foundry). Sets `enablePublicHostingEnvironment: true` to enable Foundry to pull and run container images as hosted agents.
 
-**RBAC assignments:**
-- Foundry hub identity → Cognitive Services OpenAI Contributor on AI Services
-- Foundry hub identity → Search Index Data Contributor + Search Service Contributor on AI Search
-- Foundry hub identity → Storage Blob Data Contributor on Storage
+2. **Project-level** (`Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview`) — Always deployed. Wires the storage, search, and cosmos connections for Agent Service. Depends on the account-level host.
+
+### Supporting Resources
+
+- **Storage Account** — StorageV2, Standard_LRS, HTTPS only
+- **AI Search** — Basic SKU, 1 replica, 1 partition
+- **Cosmos DB** — Serverless, NoSQL, Session consistency
+
+### Private Endpoints (4 per Foundry instance)
+
+| Service | PE Group | DNS Zones |
+|---------|----------|-----------|
+| AI Services | `account` | cognitiveservices, openai, aiservices (3 zones) |
+| Storage | `blob` | blob (1 zone) |
+| AI Search | `searchService` | search (1 zone) |
+| Cosmos DB | `Sql` | cosmos (1 zone) |
+
+### RBAC Assignments
+
+| Role | Scope | Principal |
+|------|-------|-----------|
+| Storage Blob Data Contributor | Storage Account | Project identity |
+| Search Index Data Contributor | AI Search | Project identity |
+| Search Service Contributor | AI Search | Project identity |
+| Cosmos DB Operator | Cosmos DB | Project identity |
+| Cosmos DB Data Contributor (SQL) | Cosmos DB | Project identity |
+| Cosmos DB Data Contributor (SQL) | Cosmos DB | AI Services account identity |
+
+### Spoke-Only Connections
+
+When deployed as a spoke Foundry (`!empty(apimGatewayUrl)`):
+
+1. **APIM Gateway Connection** (`category: ApiManagement`) — registered on the **account** (not project). Points to `${apimGatewayUrl}/openai`. Uses API key auth with the APIM subscription key. Metadata: `deploymentInPath: 'true'`, `provider: 'AzureOpenAI'`. Enables dynamic model discovery — no static model list needed.
+
+2. **ACR Connection** (`category: ContainerRegistry`) — registered on the **project**. Points to the spoke ACR. Uses managed identity auth. Required for the Foundry project to pull hosted agent container images.
 
 ---
 
@@ -272,17 +325,23 @@ The chat agent app (`ca-sample-aigw-aigw2`) runs with:
 
 | Setting | Value |
 |---------|-------|
-| Image | `acraigw....azurecr.io/chat-agent:latest` (built via ACR Tasks) |
+| Image | `acraigw....azurecr.io/chat-agent:v{timestamp}` (built via ACR Tasks) |
 | Port | 8000 |
 | CPU / Memory | 0.5 vCPU / 1 GiB |
 | Min / Max replicas | 1 / 3 |
 | Ingress | `external: true` (within CAE), via APIM only |
-| Identity | SystemAssigned (used for ACR Pull) |
+| Identity | SystemAssigned (used for ACR Pull, Foundry Agent SDK) |
 
 **Environment variables:**
-- `APIM_GATEWAY_URL` — hub APIM URL
-- `APIM_API_KEY` — subscription key (from secret `apim-api-key`)
-- `OPENAI_DEPLOYMENT_NAME` — `gpt-4o`
+
+| Env Var | Source | Always |
+|---------|--------|--------|
+| `APIM_GATEWAY_URL` | Bicep param | Yes |
+| `OPENAI_API_BASE` | `${apimGatewayUrl}/openai` | Yes |
+| `OPENAI_DEPLOYMENT_NAME` | Hardcoded `gpt-4o` | Yes |
+| `GATEWAY_CONNECTION_NAME` | Bicep param (default `apim-gateway`) | Yes |
+| `APIM_API_KEY` | Secret ref `apim-api-key` | Conditional |
+| `AI_PROJECT_ENDPOINT` | Spoke Foundry project endpoint | Conditional |
 
 ### Azure Container Registry
 
@@ -298,67 +357,152 @@ az acr build --registry <acr-name> --image chat-agent:latest ./apps/chat-agent
 
 ### Architecture
 
-```
-Browser
-  → APIM /chat/           (GET: HTML frontend)
-  → APIM /chat/api/chat   (POST: chat message)
-      → Container App /api/chat
-          → LangChain AzureChatOpenAI
-              → APIM /openai/deployments/gpt-4o/chat/completions
-                  → Azure AI Foundry (gpt-4o)
-```
+The chat agent (`apps/chat-agent`) is a **FastAPI** server (v3.0.0) with three AI interaction modes and six routes:
 
-The app is a **FastAPI** server with three routes:
+| Route | Method | Purpose | SDK |
+|-------|--------|---------|-----|
+| `/` | GET | Chat UI (static HTML with 3-tab interface) | — |
+| `/health` | GET | Health check + configuration status | — |
+| `/api/models` | GET | Dynamic model discovery via APIM gateway | httpx |
+| `/api/chat` | POST | Direct inference | OpenAI SDK (`AzureOpenAI`) |
+| `/api/agent/chat` | POST | Foundry Agent (PromptAgent) | azure-ai-projects (`AIProjectClient`) |
+| `/api/hosted/chat` | POST | Hosted Agent (LangGraph container) | azure-ai-projects (`AIProjectClient`) |
 
-| Route | Purpose |
-|-------|---------|
-| `GET /` | Serves the static HTML chat UI |
-| `POST /api/chat` | Receives chat messages, invokes LangChain, returns AI response |
-| `GET /health` | Returns health status including LLM configuration state |
+### Mode 1: Direct Inference (`/api/chat`)
 
-### LangChain Integration
-
-The app uses `langchain-openai`'s `AzureChatOpenAI` class configured to point at the APIM gateway (not directly at Foundry):
+Uses the **OpenAI SDK** (`AzureOpenAI`) configured with the APIM gateway URL and subscription key:
 
 ```python
-llm = AzureChatOpenAI(
+oai_direct = AzureOpenAI(
     azure_endpoint=APIM_GATEWAY_URL,     # https://apim-xxx.azure-api.net
     api_key=APIM_API_KEY,                 # APIM subscription key
-    azure_deployment="gpt-4o",
     api_version="2024-10-21",
+)
+response = oai_direct.chat.completions.create(model="gpt-4o", messages=messages)
+```
+
+The app authenticates to APIM with a subscription key, and APIM authenticates to Foundry with managed identity. The app never has direct access to Foundry credentials.
+
+### Mode 2: Foundry Agent (`/api/agent/chat`)
+
+Uses the **Azure AI Projects SDK** (`AIProjectClient` + `PromptAgentDefinition`) to create prompt-based agents via the Foundry Agent Service:
+
+```python
+# Lazy-init project client
+client = AIProjectClient(endpoint=AI_PROJECT_ENDPOINT, credential=DefaultAzureCredential())
+oai = client.get_openai_client()
+
+# Create or cache a PromptAgent for the selected model
+model_ref = f"{GATEWAY_CONNECTION_NAME}/{req.model}"  # e.g. "apim-gateway/gpt-4o"
+agent = client.agents.create_version(
+    agent_name=f"chat-{safe_name}",
+    definition=PromptAgentDefinition(model=model_ref, instructions="..."),
+)
+
+# Invoke via Responses API with agent_reference
+conv = oai.responses.create(
+    model=model_ref,
+    input=req.message,
+    extra_body={"agent_reference": {"name": agent.name, "type": "agent_reference"}},
 )
 ```
 
-This means the chat agent authenticates to APIM with a subscription key, and APIM authenticates to Foundry with managed identity. The app never has direct access to Foundry credentials.
+The `connectionName/modelName` format (e.g., `apim-gateway/gpt-4o`) tells Foundry to route the call through the APIM gateway connection rather than looking for a local deployment.
+
+Multi-turn conversations are supported via `previous_response_id`.
+
+### Mode 3: Hosted Agent (`/api/hosted/chat`)
+
+References a **pre-registered hosted agent** (`gw-hosted-agent`) — a LangGraph container running inside Foundry Agent Service:
+
+```python
+conv = oai.responses.create(
+    model=model_ref,
+    input=req.message,
+    extra_body={"agent_reference": {"name": "gw-hosted-agent", "type": "agent_reference"}},
+)
+```
+
+The hosted agent is a separate container image registered via `ImageBasedHostedAgentDefinition`. The chat agent invokes it the same way as a prompt agent — via the Responses API with `agent_reference`.
 
 ### Chat UI
 
 The HTML frontend (`static/index.html`) provides:
-- Multi-turn conversation with message history
-- System message configuration
+- **Three-tab interface**: Direct Inference, Foundry Agent, Hosted Agent
+- **Model selector** (agent/hosted tabs): Dynamic discovery via `/api/models`
+- Multi-turn conversation with per-tab state
 - Auto-resizing textarea
-- Visual display of the request flow
+- Visual display of the current request flow path
 
 ---
 
-## Request Flow (End-to-End)
+## Hosted Agent (LangGraph Container)
 
-### 1. User opens chat UI
+The hosted agent (`apps/hosted-agent/`) is a **LangGraph** agent packaged as a container image that runs inside Foundry Agent Service.
+
+### Agent Architecture
 
 ```
-Browser  →  APIM (public IP)  →  /chat/
-         →  APIM resolves chat-app-backend FQDN via private DNS  →  10.1.2.4
-         →  PE in spoke snet-pe  →  CAE  →  Container App GET /
-         →  Returns index.html
+LLM (gpt-4o via APIM gateway)
+  ↕
+ReAct Loop (LangGraph StateGraph)
+  ├── llm_call node — LLM decides to call a tool or respond
+  ├── tool_node — Executes tool calls
+  └── should_continue — Routes to tools or end
 ```
 
-### 2. User sends a chat message
+**Framework stack:**
+- LangChain (`init_chat_model` with `azure_openai:gpt-4o`)
+- LangGraph (`StateGraph` with `MessagesState`)
+- `azure-ai-agentserver[langgraph]` (`from_langgraph` adapter — exposes Responses API v2)
+
+**Three mock tools:**
+- `get_current_time()` — returns current UTC time
+- `roll_dice(sides=6)` — random dice roll
+- `calculate(expression)` — evaluates safe math expressions
+
+**Authentication:** Uses `DefaultAzureCredential` + `get_bearer_token_provider` for `cognitiveservices.azure.com/.default`. No API keys — the container's managed identity authenticates to the APIM gateway.
+
+### Registration
+
+The hosted agent is registered with Foundry via `scripts/deploy_hosted_agent.py`:
+
+```python
+agent = client.agents.create_version(
+    agent_name="gw-hosted-agent",
+    definition=ImageBasedHostedAgentDefinition(
+        container_protocol_versions=[ProtocolVersionRecord(
+            protocol=AgentProtocol.RESPONSES, version="v2")],
+        cpu="1",
+        memory="2Gi",
+        image=image_tag,
+        environment_variables={
+            "AZURE_AI_PROJECT_ENDPOINT": project_endpoint,
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-4o",
+            "AZURE_OPENAI_ENDPOINT": f"{apim_url}/openai",
+            "OPENAI_API_VERSION": "2024-10-21",
+        },
+    ),
+)
+```
+
+**Prerequisites for hosted agents in infrastructure:**
+1. Account-level capability host with `enablePublicHostingEnvironment: true`
+2. ACR connection on the Foundry project (`category: ContainerRegistry`, `authType: ManagedIdentity`)
+3. AcrPull RBAC for the Foundry project identity on the ACR
+4. APIM gateway connection for model access
+
+---
+
+## Request Flows
+
+### Flow 1: Direct Inference (POST /api/chat)
 
 ```
 Browser  →  POST APIM/chat/api/chat  {messages: [...]}
          →  APIM (no subscription required)  →  Container App POST /api/chat
 
-Container App  →  LangChain AzureChatOpenAI
+Container App  →  OpenAI SDK (AzureOpenAI)
                →  POST APIM/openai/deployments/gpt-4o/chat/completions
                    Header: api-key: <spoke-subscription-key>
                →  APIM validates subscription key
@@ -369,10 +513,43 @@ Container App  →  LangChain AzureChatOpenAI
 
 AI Foundry  →  gpt-4o processes request  →  returns completion
 
-Reverse path through APIM  →  Container App  →  APIM /chat  →  Browser
+Reverse path: AI Foundry → APIM → Container App → APIM /chat → Browser
 ```
 
-### 3. DNS resolution (APIM → spoke container app)
+### Flow 2: Foundry Agent (POST /api/agent/chat)
+
+```
+Browser  →  POST APIM/chat/api/agent/chat  {message, model, thread_id}
+         →  Container App POST /api/agent/chat
+
+Container App  →  AIProjectClient (DefaultAzureCredential)
+               →  create_version() → PromptAgentDefinition(model="apim-gateway/gpt-4o")
+               →  oai.responses.create(model, input, agent_reference)
+               →  Spoke Foundry Agent Service
+                    └── apim-gateway connection
+                         └── APIM /openai/deployments/gpt-4o/...
+                              └── Hub AI Services (gpt-4o)
+
+Reverse path: Hub Foundry → APIM → Spoke Agent Service → Container App → APIM /chat → Browser
+```
+
+### Flow 3: Hosted Agent (POST /api/hosted/chat)
+
+```
+Browser  →  POST APIM/chat/api/hosted/chat  {message, model, thread_id}
+         →  Container App POST /api/hosted/chat
+
+Container App  →  oai.responses.create(model, input, agent_reference="gw-hosted-agent")
+               →  Spoke Foundry Agent Service
+                    └── Pulls & runs hosted-agent container from ACR
+                         └── LangGraph agent (tool loop)
+                              └── LLM calls via APIM gateway → Hub AI Services
+                              └── Tool calls (get_current_time, roll_dice, calculate)
+
+Reverse path: Hosted Agent → Spoke Agent Service → Container App → APIM /chat → Browser
+```
+
+### DNS Resolution (APIM → Spoke Container App)
 
 ```
 APIM resolves: ca-sample-aigw-aigw2.kindcoast-7b175670.swedencentral.azurecontainerapps.io
@@ -387,6 +564,32 @@ APIM resolves: ca-sample-aigw-aigw2.kindcoast-7b175670.swedencentral.azurecontai
 
 ---
 
+## CI/CD — Postprovision Hook
+
+The `postprovision.sh` hook runs automatically after `azd provision` and handles two image builds plus hosted agent registration:
+
+```
+azd provision
+  └── Bicep deploys all infra
+       └── postprovision.sh
+            ├── 1. Build chat-agent image
+            │     └── az acr build → chat-agent:v{timestamp}
+            │     └── az containerapp update → deploy to spoke
+            │     └── az containerapp ingress update → port 8000
+            │     └── azd env set CHAT_AGENT_IMAGE
+            │
+            ├── 2. Build hosted-agent image
+            │     └── az acr build → hosted-agent:v{timestamp}
+            │     └── azd env set HOSTED_AGENT_IMAGE
+            │
+            └── 3. Register hosted agent (if spoke Foundry exists)
+                  └── python3 deploy_hosted_agent.py
+                       └── ImageBasedHostedAgentDefinition
+                       └── agent_name: gw-hosted-agent
+```
+
+---
+
 ## Observability
 
 | Resource | Purpose |
@@ -396,6 +599,7 @@ APIM resolves: ca-sample-aigw-aigw2.kindcoast-7b175670.swedencentral.azurecontai
 | APIM Diagnostic Settings | Platform logs + metrics → Log Analytics |
 | APIM API Diagnostics | Request/response logging → App Insights (100% sampling) |
 | Container Apps Logs | Routed to Log Analytics via `appLogsConfiguration` |
+| Foundry App Insights Connection | Connected to both hub and spoke Foundry projects |
 
 APIM uses W3C trace correlation, so traces can be followed from browser → APIM → container app → APIM (second hop) → Foundry.
 
@@ -409,7 +613,10 @@ APIM uses W3C trace correlation, so traces can be followed from browser → APIM
 | **APIM → Foundry** | Managed identity authentication. APIM's system-assigned identity has `Cognitive Services User` role on the AI Services account. No API keys stored. |
 | **APIM → Container App** | Private networking. APIM is VNet-integrated, resolves the app's private IP via DNS, connects through VNet peering to the PE. The CAE has `publicNetworkAccess: Disabled`. |
 | **Container App → APIM** | APIM subscription key (`spoke-subscription`) stored as a container app secret. Injected via `APIM_API_KEY` env var. |
+| **Container App → Foundry** | `DefaultAzureCredential` (system-assigned managed identity). Azure AI Developer role on the spoke Foundry account. |
 | **Container App → ACR** | System-assigned managed identity with `AcrPull` role. No admin credentials. |
+| **Foundry → ACR** | Project-level managed identity with `AcrPull` role (for hosted agent image pull). |
+| **Foundry → APIM** | APIM gateway connection with subscription key (for agent model inference). |
 | **All hub PaaS services** | Private endpoints only. Storage, AI Search, Cosmos DB, AI Services all accessible only via PE. |
 | **Spoke subnet** | NSG `Deny-Internet-Inbound` rule blocks all public internet ingress. |
 
@@ -418,7 +625,7 @@ APIM uses W3C trace correlation, so traces can be followed from browser → APIM
 ## File Structure
 
 ```
-├── azure.yaml                          # azd project config
+├── azure.yaml                          # azd project config (postprovision hook)
 ├── infra/
 │   ├── main.bicep                      # Subscription-scoped orchestrator
 │   ├── main.bicepparam                 # Parameters (env var bindings)
@@ -431,22 +638,35 @@ APIM uses W3C trace correlation, so traces can be followed from browser → APIM
 │       │   ├── observability.bicep     # Log Analytics + App Insights
 │       │   ├── foundry.bicep           # AI Foundry full stack (reusable hub/spoke)
 │       │   ├── apim.bicep              # APIM instance + OpenAI API + policies
-│       │   ├── apim-chat-api.bicep     # APIM API for /chat/* → spoke app
+│       │   ├── apim-chat-api.bicep     # APIM API for /chat/* → spoke app (7 ops)
 │       │   ├── cae-dns-wildcard.bicep  # Wildcard A record for CAE PE
 │       │   └── policies/
-│       │       └── openai-api-policy.xml  # APIM inbound policy (MI auth, rate limit)
+│       │       └── openai-api-policy.xml
 │       └── spoke/
 │           ├── networking.bicep        # Spoke VNet, 2-3 subnets, NSGs
-│           └── container-apps.bicep    # ACR + CAE + container app + PE
+│           ├── container-apps.bicep    # ACR + CAE + container app + PE
+│           ├── foundry-role.bicep      # Container App → Foundry RBAC
+│           ├── acr-pull-role.bicep     # Foundry Project → ACR AcrPull
+│           └── pe-nic-ip.bicep         # Helper to extract PE NIC IP
 ├── apps/
-│   └── chat-agent/
-│       ├── main.py                     # FastAPI + LangChain app
-│       ├── static/index.html           # Chat UI
-│       ├── Dockerfile                  # Python 3.12-slim + uvicorn
-│       └── requirements.txt            # Dependencies
-└── scripts/
-    ├── deploy-chat-agent.sh            # Build + deploy script (ACR Tasks + az containerapp update)
-    └── test-gateway.sh                 # Comprehensive gateway test suite
+│   ├── chat-agent/
+│   │   ├── main.py                     # FastAPI app (3 modes: direct/agent/hosted)
+│   │   ├── static/index.html           # Chat UI (3-tab interface)
+│   │   ├── Dockerfile                  # Python 3.12-slim + uvicorn, port 8000
+│   │   └── requirements.txt            # fastapi, openai, azure-ai-projects, httpx
+│   └── hosted-agent/
+│       ├── agent.py                    # LangGraph agent with tools
+│       ├── Dockerfile                  # Python 3.12-slim, port 8088
+│       └── requirements.txt            # langchain, langgraph, azure-ai-agentserver
+├── scripts/
+│   ├── postprovision.sh                # Build + deploy hook (2 images + agent registration)
+│   ├── deploy_hosted_agent.py          # Register hosted agent with Foundry
+│   ├── deploy-chat-agent.sh            # Manual build + deploy (chat agent only)
+│   └── test-gateway.sh                 # Gateway test suite
+├── architecture.drawio                 # Editable architecture diagram
+├── architecture.png                    # Architecture diagram image
+├── architecture.md                     # ASCII traffic flows + resource summary
+└── deepdive.md                         # This document
 ```
 
 ---
@@ -460,11 +680,28 @@ azd up
 # Infrastructure only (no app deploy)
 azd provision --no-prompt
 
-# Build and deploy the chat agent (fast — no full provision)
+# The postprovision hook automatically:
+#   1. Builds chat-agent + hosted-agent images via ACR Tasks
+#   2. Deploys chat-agent to Container App
+#   3. Registers hosted agent with Foundry (if spoke Foundry exists)
+
+# Manual: build and deploy the chat agent only (fast — no full provision)
 ./scripts/deploy-chat-agent.sh
 
 # Test the gateway
 ./scripts/test-gateway.sh
+
+# Test all three modes
+curl -s https://<apim-url>/chat/health
+curl -s -X POST https://<apim-url>/chat/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hello!"}]}'
+curl -s -X POST https://<apim-url>/chat/api/agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello!","model":"gpt-4o"}'
+curl -s -X POST https://<apim-url>/chat/api/hosted/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What time is it?","model":"gpt-4o"}'
 ```
 
 ---
@@ -481,6 +718,12 @@ azd provision --no-prompt
 
 5. **Wildcard DNS for CAE PE** — The PE DNS zone group only creates records for the environment prefix, not individual app FQDNs. A wildcard A record ensures all apps in the environment resolve to the PE private IP.
 
-6. **ACR Tasks for builds** — Cloud-based Docker builds (`az acr build`) eliminate the need for local Docker. The deploy script uses `az containerapp update` for fast revisions instead of full `azd provision` cycles.
+6. **ACR Tasks for builds** — Cloud-based Docker builds (`az acr build`) eliminate the need for local Docker. The postprovision hook handles both images automatically.
 
-7. **Reusable Foundry module** — The same `foundry.bicep` module is used for both hub and spoke Foundry deployments, differentiated by `instanceSuffix`. The spoke Foundry is optional (`deploySpokeFoundry` flag).
+7. **Reusable Foundry module** — The same `foundry.bicep` module is used for both hub and spoke Foundry deployments, differentiated by `instanceSuffix`. The spoke Foundry adds APIM gateway + ACR connections and the account-level capability host.
+
+8. **BYO Gateway with dynamic discovery** — The spoke Foundry's `apim-gateway` connection (category: `ApiManagement`) points to the hub APIM's `/openai` endpoint. Foundry dynamically discovers available models by querying APIM's deployment list endpoint — no static model list needed.
+
+9. **Three-tier agent architecture** — Direct inference (OpenAI SDK), prompt agents (PromptAgentDefinition), and hosted agents (ImageBasedHostedAgentDefinition) all route through the same APIM gateway, giving teams flexibility to choose the right abstraction level.
+
+10. **Postprovision hook for CI** — Solves the chicken-and-egg problem (ACR must exist before image push) and handles the full lifecycle: build images → deploy container app → register hosted agent. Uses unique timestamp tags to avoid caching issues.

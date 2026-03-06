@@ -89,6 +89,21 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
 - An Azure subscription with **Contributor** access
 - Quota for Azure OpenAI models (e.g., GPT-4o) in the target region
 
+> **⚠️ Required: Register the `Microsoft.Web` resource provider**
+>
+> APIM StandardV2 with VNet integration requires the `Microsoft.Web` resource provider to be registered in your subscription (for subnet delegation to `Microsoft.Web/serverFarms`). **Deployment will fail with `ActivationFailed` if this is not registered.**
+>
+> ```bash
+> # Check registration status
+> az provider show -n Microsoft.Web --query registrationState -o tsv
+>
+> # Register if "NotRegistered"
+> az provider register -n Microsoft.Web
+>
+> # Wait for registration to complete (~1-2 minutes)
+> az provider show -n Microsoft.Web --query registrationState -o tsv
+> ```
+
 ## Quick Start
 
 ```bash
@@ -235,6 +250,10 @@ For production-like security:
 3. Switch APIM to external VNet mode with `virtualNetworkType: 'External'`
 4. Set Container Apps Environment `internal: true`
 5. Configure Cosmos DB firewall to allow only Azure services and known IPs
+
+## Related Samples
+
+- **[Azure AI Hosted Agents with azd](https://github.com/jplck/msft-foundry-hosted-agents-sample)** — Full sample for hosted agents and workflows using Azure AI Foundry. Shows how to build container-based agents (LangGraph, agent-framework), push to ACR, register as `ImageBasedHostedAgentDefinition`, and orchestrate multi-agent workflows — all automated via `azd up`.
 
 ## License
 

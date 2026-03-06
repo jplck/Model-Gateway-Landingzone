@@ -54,6 +54,13 @@ if [[ -n "$CA_NAME" ]]; then
   echo "🚀 Deploying ${IMAGE} to ${CA_NAME}"
   # Wait a moment for the revision to stabilize
   sleep 5
+  # Ensure registry auth is configured (first deploy uses MCR placeholder, no registry set)
+  az containerapp registry set \
+    --name "$CA_NAME" \
+    --resource-group "$SPOKE_RG" \
+    --server "$ACR_LOGIN_SERVER" \
+    --identity system \
+    --output none
   az containerapp update \
     --name "$CA_NAME" \
     --resource-group "$SPOKE_RG" \
@@ -94,15 +101,14 @@ az acr build \
 azd env set HOSTED_AGENT_IMAGE "$HOSTED_IMAGE" 2>/dev/null || true
 echo "📝 HOSTED_AGENT_IMAGE=${HOSTED_IMAGE} saved to azd env"
 
-# Register the hosted agent with Foundry (ImageBasedHostedAgentDefinition)
+# Register the hosted agent with Foundry (HostedAgentDefinition)
 if [[ -n "$SPOKE_PROJECT" ]]; then
   echo "📦 Registering hosted agent with Foundry..."
   export AI_PROJECT_ENDPOINT="$SPOKE_PROJECT"
   export HOSTED_AGENT_IMAGE="$HOSTED_IMAGE"
   export APIM_GATEWAY_URL="${APIM_URL}"
-  export GATEWAY_CONNECTION_NAME="apim-gateway"
 
-  pip install --quiet azure-ai-projects azure-identity 2>/dev/null || true
+  pip install --quiet --pre "azure-ai-projects>=2.0.0b4" azure-identity 2>/dev/null || pip install --break-system-packages --quiet --pre "azure-ai-projects>=2.0.0b4" azure-identity 2>/dev/null || true
   python3 "${SCRIPT_DIR}/deploy_hosted_agent.py" || {
     echo "⚠️  Hosted agent registration failed — image built but not registered."
   }

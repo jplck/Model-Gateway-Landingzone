@@ -75,8 +75,9 @@ param appInsightsConnectionString string = ''
 @description('ACR login server for hosted agent image pull (leave empty to skip)')
 param acrLoginServer string = ''
 
-@description('Enable hosted agent deployment (adds account-level capability host)')
-param enableHostedAgents bool = false
+@description('ACR resource ID for the connection credential (required when acrLoginServer is set)')
+param acrResourceId string = ''
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -190,13 +191,6 @@ resource aiServicesAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-prev
       defaultAction: 'Allow' // Phase 9: switch to 'Deny'
     }
     disableLocalAuth: false
-    networkInjections: [
-      {
-        scenario: 'agent'
-        subnetArmId: agentSubnetId
-        useMicrosoftManagedNetwork: false
-      }
-    ]
   }
 }
 
@@ -373,6 +367,20 @@ resource cosmosDataContributorAiServices 'Microsoft.DocumentDB/databaseAccounts/
   }
 }
 
+// Cognitive Services User — project identity needs this to execute agent actions
+resource projectCogServicesUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiServicesAccount.id, foundryProject.id, 'a97b65f3-24c7-4388-baec-2e87135dc908')
+  scope: aiServicesAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'a97b65f3-24c7-4388-baec-2e87135dc908' // Cognitive Services User
+    )
+    principalId: foundryProject.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ============================================================================
 // Capability Hosts
 //
@@ -382,16 +390,15 @@ resource cosmosDataContributorAiServices 'Microsoft.DocumentDB/databaseAccounts/
 //   2. Project-level — wires storage/search/cosmos connections for Agent Service
 // ============================================================================
 
-// Account-level capability host (required for hosted agents / image-based agents)
-resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview' =
-  if (enableHostedAgents) {
-    parent: aiServicesAccount
-    name: 'agents'
-    properties: {
-      capabilityHostKind: 'Agents'
-      enablePublicHostingEnvironment: true
-    }
+// Account-level capability host (enables agent container execution)
+resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-04-01-preview' = {
+  parent: aiServicesAccount
+  name: 'caphost'
+  properties: {
+    #disable-next-line BCP037
+    capabilityHostKind: 'Agents'
   }
+}
 
 // Project-level capability host (wires backing stores for Agent Service)
 resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
@@ -405,13 +412,13 @@ resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/ca
     threadStorageConnections: [cosmosConnection.name]
   }
   dependsOn: [
+    accountCapabilityHost
     storageBlobDataContributor
     searchIndexDataContributor
     searchServiceContributor
     cosmosDbOperator
     cosmosDataContributor
     cosmosDataContributorAiServices
-    accountCapabilityHost
   ]
 }
 
@@ -608,8 +615,13 @@ resource acrConnection 'Microsoft.CognitiveServices/accounts/projects/connection
       category: 'ContainerRegistry'
       target: 'https://${acrLoginServer}'
       authType: 'ManagedIdentity'
+      isSharedToAll: true
+      credentials: {
+        clientId: foundryProject.identity.principalId
+        resourceId: acrResourceId
+      }
       metadata: {
-        ApiType: 'Azure'
+        ResourceId: acrResourceId
       }
     }
   }

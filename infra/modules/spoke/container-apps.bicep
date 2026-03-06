@@ -55,6 +55,7 @@ param gatewayConnectionName string = 'apim-gateway'
 
 var resourceSuffix = uniqueString(resourceGroup().id)
 var acrName = take('acr${projectName}${resourceSuffix}', 50)
+var isAcrImage = contains(chatAgentImage, acr.properties.loginServer)
 
 // ============================================================================
 // Azure Container Registry
@@ -169,7 +170,7 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'apim-api-key', value: apimSubscriptionKey }
           ]
         : []
-      registries: !empty(apimSubscriptionKey)
+      registries: isAcrImage
         ? [
             {
               server: acr.properties.loginServer

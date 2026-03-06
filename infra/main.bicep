@@ -47,9 +47,9 @@ param chatAgentPort int = 80
 @description('Model deployments for the hub Foundry')
 param hubModelDeployments array = [
   {
-    name: 'gpt-4o'
-    modelName: 'gpt-4o'
-    modelVersion: '2024-11-20'
+    name: 'gpt-4.1'
+    modelName: 'gpt-4.1'
+    modelVersion: '2025-04-14'
     skuName: 'GlobalStandard'
     capacity: 10
   }
@@ -326,7 +326,7 @@ module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
     appInsightsConnectionString: hubObservability.outputs.appInsightsConnectionString
     acrLoginServer: '${spokeAcrName}.azurecr.io'
-    enableHostedAgents: true
+    acrResourceId: '${spokeRg.id}/providers/Microsoft.ContainerRegistry/registries/${spokeAcrName}'
   }
 }
 
