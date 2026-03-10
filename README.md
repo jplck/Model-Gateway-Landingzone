@@ -162,6 +162,85 @@ azd env set DEPLOY_SPOKE_FOUNDRY true
 azd up
 ```
 
+### Optional: Entra Agent Identity (Auth Sidecar)
+
+The landing zone supports [Entra Agent Identity](https://learn.microsoft.com/en-us/entra/msidweb/agent-id-sdk/) for workload authentication. When enabled, an auth sidecar container runs alongside the chat agent and handles the full token exchange chain — the application code never touches credentials.
+
+**Token flow:**
+```
+Container App MI → FIC → Blueprint → Agent Identity → Resource Token
+```
+
+**Concepts:**
+
+| Artefact | What it is |
+|---|---|
+| **Blueprint** | App registration template (`AgentIdentityBlueprint`) — trust anchor, FIC target, API scope definition |
+| **Agent Identity** | Runtime service principal (`AgentIdentity`) — the actual identity that accesses resources (RBAC roles assigned here) |
+| **Auth Sidecar** | Container (`mcr.microsoft.com/entra-sdk/auth-sidecar`) running at `localhost:8080` — acquires tokens for downstream APIs |
+| **FIC** | Federated Identity Credential linking the Container App's managed identity to the Blueprint |
+
+**Prerequisites:**
+
+- A management app registration with:
+  - `Application.ReadWrite.OwnedBy` Graph application permission (admin consented)
+  - `Agent ID Administrator` directory role assigned to its service principal
+- Your tenant must be onboarded to the Entra Agent ID preview
+
+**Setup:**
+
+```bash
+# 1. Set management app credentials
+azd env set AGENT_MGMT_CLIENT_ID "<management-app-client-id>"
+azd env set AGENT_MGMT_CLIENT_SECRET "<management-app-client-secret>"
+
+# 2. Deploy infrastructure first (creates the Container App + MI)
+azd up
+
+# 3. Run the agent identity setup script
+#    Creates: Blueprint → Blueprint SP → Agent Identity → FIC
+#    The script is idempotent — safe to re-run
+./scripts/setup_agent_identity.sh
+
+# 4. Redeploy with the auth sidecar enabled
+#    (The script sets ENABLE_AUTH_SIDECAR=true + BLUEPRINT_APP_ID + AGENT_IDENTITY_APP_ID in azd env)
+azd up
+
+# 5. Grant resource access to the Agent Identity
+az role assignment create \
+  --assignee-object-id <agent-identity-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role 'Cognitive Services User' \
+  --scope <foundry-account-resource-id>
+
+az role assignment create \
+  --assignee-object-id <agent-identity-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role 'Storage Blob Data Contributor' \
+  --scope <spoke-storage-account-resource-id>
+```
+
+The setup script prints the Agent Identity object ID and app ID at the end. These are also saved in `azd env` as `AGENT_IDENTITY_APP_ID` and `BLUEPRINT_APP_ID`.
+
+**What happens when enabled:**
+
+- A sidecar container joins the chat agent pod, exposing `http://localhost:8080`
+- The sidecar is configured with `DownstreamApis` for CognitiveServices, Storage, and AgentToken
+- The chat agent calls `GET http://localhost:8080/api/token/{ApiName}` to get Bearer tokens
+- The `/api/files` endpoint and `list_files` tool use the Storage token to list blobs
+
+**Related parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enableAuthSidecar` | `false` | Deploy the auth sidecar alongside the chat agent |
+| `entraIdTenantId` | `""` | Entra tenant ID |
+| `blueprintAppId` | `""` | Blueprint app (client) ID |
+| `agentIdentityAppId` | `""` | Agent Identity app (client) ID |
+
+**Reference:** [Entra Agent ID preview guide](https://github.com/astaykov/entra-agent-id-preview-guide)
+**Reference:** [Entra Agent ID with Azure Apps](https://github.com/ivanthelad/agentid-app-fic)
+
 ## Parameters
 
 | Parameter | Default | Description |

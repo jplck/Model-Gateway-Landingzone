@@ -63,6 +63,7 @@ if [[ -n "$CA_NAME" ]]; then
   az containerapp update \
     --name "$CA_NAME" \
     --resource-group "$SPOKE_RG" \
+    --container-name "chat-agent" \
     --image "$IMAGE" \
     --set-env-vars "PORT=8000" \
     --output none

@@ -1,25 +1,26 @@
 """
-Chat Agent — Triple-mode FastAPI app for the AI Gateway Landing Zone.
+Chat Agent — FastAPI app for the AI Gateway Landing Zone.
 
 Modes:
-  1. Direct Inference — OpenAI SDK → APIM → Hub Foundry (API key auth)
+  1. LangGraph Agent  — LangGraph ReAct agent → APIM → Hub Foundry (API key auth, with tools)
   2. Foundry Agent    — PromptAgent SDK → Agent Service → APIM Gateway → Hub Foundry
   3. Hosted Agent     — ImageBasedHostedAgent (LangGraph container) → APIM Gateway → Hub Foundry
 
 Routes:
   GET  /               → Chat UI (static HTML)
   GET  /api/models     → Discover deployed models via APIM gateway
-  POST /api/chat       → Direct inference (OpenAI SDK)
+  POST /api/chat       → LangGraph agent (tool calling)
   POST /api/agent/chat → Foundry Agent (Agent SDK v2)
   POST /api/hosted/chat→ Hosted Agent (LangGraph image-based)
   GET  /health         → Health check
 """
 
 import os
+import json as _json
 import logging
+import xml.etree.ElementTree as ET
 
 import httpx
-from openai import AzureOpenAI
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -27,7 +28,7 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("chat-agent")
 
-app = FastAPI(title="Chat Agent", version="3.0.0")
+app = FastAPI(title="Chat Agent", version="4.0.0")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -39,20 +40,28 @@ DEPLOYMENT_NAME = os.environ.get("OPENAI_DEPLOYMENT_NAME", "gpt-4.1")
 API_VERSION = os.environ.get("OPENAI_API_VERSION", "2024-10-21")
 AI_PROJECT_ENDPOINT = os.environ.get("AI_PROJECT_ENDPOINT", "")
 GATEWAY_CONNECTION_NAME = os.environ.get("GATEWAY_CONNECTION_NAME", "apim-gateway")
+AGENTID_SIDECAR_URL = os.environ.get("AGENTID_SIDECAR_URL", "")
+STORAGE_ACCOUNT_URL = os.environ.get("STORAGE_ACCOUNT_URL", "")
+STORAGE_CONTAINER_NAME = os.environ.get("STORAGE_CONTAINER_NAME", "agent-files")
 
 # ---------------------------------------------------------------------------
-# Direct Inference — Azure OpenAI SDK (APIM API-key auth)
+# LangGraph ReAct Agent — AzureChatOpenAI → APIM → Hub Foundry
 # ---------------------------------------------------------------------------
 
-oai_direct: AzureOpenAI | None = None
+from langchain_openai import AzureChatOpenAI
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+llm: AzureChatOpenAI | None = None
 
 if APIM_GATEWAY_URL and APIM_API_KEY:
-    oai_direct = AzureOpenAI(
+    llm = AzureChatOpenAI(
         azure_endpoint=APIM_GATEWAY_URL,
         api_key=APIM_API_KEY,
         api_version=API_VERSION,
+        azure_deployment=DEPLOYMENT_NAME,
     )
-    logger.info("Direct OpenAI configured: %s via %s", DEPLOYMENT_NAME, APIM_GATEWAY_URL)
+    logger.info("LangGraph LLM configured: %s via %s", DEPLOYMENT_NAME, APIM_GATEWAY_URL)
 else:
     logger.warning(
         "APIM_GATEWAY_URL or APIM_API_KEY not set — /api/chat will return 503"
@@ -130,8 +139,15 @@ class ChatRequest(BaseModel):
     model: str | None = None
 
 
+class ToolCallInfo(BaseModel):
+    name: str
+    arguments: dict
+    result: str
+
+
 class ChatResponse(BaseModel):
     reply: str
+    tool_calls: list[ToolCallInfo] = []
 
 
 class AgentChatRequest(BaseModel):
@@ -172,13 +188,62 @@ async def index():
 async def health():
     return {
         "status": "ok",
-        "llm_configured": oai_direct is not None,
+        "llm_configured": llm is not None,
         "agent_configured": bool(AI_PROJECT_ENDPOINT),
         "hosted_agent_configured": bool(AI_PROJECT_ENDPOINT),
         "deployment": DEPLOYMENT_NAME,
         "gateway": APIM_GATEWAY_URL,
         "project_endpoint": AI_PROJECT_ENDPOINT,
+        "sidecar_url": AGENTID_SIDECAR_URL or None,
     }
+
+
+@app.get("/api/auth/test")
+async def test_auth_sidecar():
+    """Probe the Agent ID auth sidecar and attempt to acquire tokens."""
+    if not AGENTID_SIDECAR_URL:
+        return {"error": "AGENTID_SIDECAR_URL not configured"}
+
+    results = {}
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Check sidecar health
+        try:
+            r = await client.get(f"{AGENTID_SIDECAR_URL}/health")
+            results["sidecar_health"] = {"status": r.status_code, "body": r.text[:500]}
+        except Exception as e:
+            results["sidecar_health"] = {"error": str(e)}
+
+        # Try each downstream API token
+        for api_name in ["CognitiveServices", "Storage", "AgentToken"]:
+            try:
+                r = await client.get(f"{AGENTID_SIDECAR_URL}/api/token/{api_name}")
+                if r.status_code == 200:
+                    token_data = r.json()
+                    # Don't expose the full token — just confirm it works
+                    access_token = token_data.get("access_token", "")
+                    results[api_name] = {
+                        "status": "ok",
+                        "token_length": len(access_token),
+                        "token_prefix": access_token[:20] + "..." if access_token else "",
+                    }
+                else:
+                    results[api_name] = {"status": r.status_code, "body": r.text[:500]}
+            except Exception as e:
+                results[api_name] = {"error": str(e)}
+
+    return results
+
+
+@app.get("/api/files")
+async def list_files_endpoint(prefix: str = ""):
+    """List blobs in the spoke storage container using a sidecar-acquired token."""
+    if not AGENTID_SIDECAR_URL:
+        raise HTTPException(503, "Auth sidecar not configured")
+    if not STORAGE_ACCOUNT_URL:
+        raise HTTPException(503, "STORAGE_ACCOUNT_URL not configured")
+
+    blobs = await _list_blobs(prefix=prefix)
+    return {"container": STORAGE_CONTAINER_NAME, "prefix": prefix, "blobs": blobs}
 
 
 @app.get("/api/models")
@@ -210,27 +275,136 @@ async def list_models():
         return {"models": models}
 
 
+async def _list_blobs(prefix: str = "") -> list[dict]:
+    """Fetch blob list from spoke storage via the auth sidecar."""
+    if not AGENTID_SIDECAR_URL or not STORAGE_ACCOUNT_URL:
+        return []
+    async with httpx.AsyncClient(timeout=15) as client:
+        token_resp = await client.get(f"{AGENTID_SIDECAR_URL}/api/token/Storage")
+        if token_resp.status_code != 200:
+            return []
+        access_token = token_resp.json().get("access_token", "")
+        if not access_token:
+            return []
+        list_url = (
+            f"{STORAGE_ACCOUNT_URL.rstrip('/')}/{STORAGE_CONTAINER_NAME}"
+            f"?restype=container&comp=list&prefix={prefix}"
+        )
+        blob_resp = await client.get(
+            list_url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "x-ms-version": "2024-11-04",
+            },
+        )
+        if blob_resp.status_code != 200:
+            return []
+        root = ET.fromstring(blob_resp.text)
+        blobs = []
+        for blob_el in root.findall(".//Blob"):
+            name = blob_el.findtext("Name", "")
+            props = blob_el.find("Properties")
+            blobs.append({
+                "name": name,
+                "size": int(props.findtext("Content-Length", "0")) if props is not None else 0,
+                "content_type": props.findtext("Content-Type", "") if props is not None else "",
+            })
+        return blobs
+
+
+# ---------------------------------------------------------------------------
+# LangChain Tools
+# ---------------------------------------------------------------------------
+
+@tool
+async def list_files(prefix: str = "") -> str:
+    """List files in the agent's blob storage container.
+
+    Returns file names, sizes, and content types.
+    Use prefix to filter by path/folder (e.g. 'documents/' or 'images/photo').
+    """
+    blobs = await _list_blobs(prefix=prefix)
+    return _json.dumps({"files": blobs, "count": len(blobs)})
+
+
+# Build tool list — only include tools whose backing services are configured
+_tools = []
+if AGENTID_SIDECAR_URL and STORAGE_ACCOUNT_URL:
+    _tools.append(list_files)
+
+SYSTEM_PROMPT = (
+    "You are a helpful assistant running in an AI Gateway landing zone. "
+    "You have access to a blob storage container and can list files in it. "
+    "Be concise and helpful."
+)
+
+
+def _get_agent(model: str | None = None):
+    """Create a LangGraph ReAct agent, optionally overriding the deployment."""
+    agent_llm = llm
+    if model and model != DEPLOYMENT_NAME and agent_llm is not None:
+        agent_llm = AzureChatOpenAI(
+            azure_endpoint=APIM_GATEWAY_URL,
+            api_key=APIM_API_KEY,
+            api_version=API_VERSION,
+            azure_deployment=model,
+        )
+    if agent_llm is None:
+        return None
+    return create_react_agent(agent_llm, _tools, prompt=SYSTEM_PROMPT)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    """Direct inference via OpenAI SDK → APIM → Hub Foundry."""
-    if oai_direct is None:
+async def chat(req: ChatRequest):
+    """LangGraph ReAct agent → APIM → Hub Foundry, with automatic tool calling."""
+    agent = _get_agent(req.model)
+    if agent is None:
         raise HTTPException(
             status_code=503,
             detail="LLM not configured. Set APIM_GATEWAY_URL and APIM_API_KEY.",
         )
 
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    # Build LangGraph messages from request
+    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    messages = []
+    for m in req.messages:
+        if m.role == "system":
+            messages.append(SystemMessage(content=m.content))
+        elif m.role == "user":
+            messages.append(HumanMessage(content=m.content))
+        elif m.role == "assistant":
+            messages.append(AIMessage(content=m.content))
+
+    tool_calls_made: list[ToolCallInfo] = []
 
     try:
-        response = oai_direct.chat.completions.create(
-            model=req.model or DEPLOYMENT_NAME,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1024,
-        )
-        return ChatResponse(reply=response.choices[0].message.content)
+        result = await agent.ainvoke({"messages": messages})
+
+        # Extract tool calls and final reply from the message history
+        reply = ""
+        for msg in result["messages"]:
+            # Collect tool call info from AI messages
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_calls_made.append(ToolCallInfo(
+                        name=tc["name"],
+                        arguments=tc.get("args", {}),
+                        result="",  # filled below
+                    ))
+            # Collect tool results
+            if msg.type == "tool" and tool_calls_made:
+                # Match to the last unfilled tool call
+                for tci in tool_calls_made:
+                    if tci.name == msg.name and tci.result == "":
+                        tci.result = msg.content
+                        break
+            # Last AI message is the final reply
+            if msg.type == "ai" and msg.content:
+                reply = msg.content
+
+        return ChatResponse(reply=reply, tool_calls=tool_calls_made)
     except Exception as e:
-        logger.exception("LLM call failed")
+        logger.exception("LangGraph agent call failed")
         raise HTTPException(status_code=502, detail=f"LLM error: {e}")
 
 

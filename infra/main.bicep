@@ -44,6 +44,18 @@ param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Chat agent container port')
 param chatAgentPort int = 80
 
+@description('Enable the Agent ID auth sidecar on the container app')
+param enableAuthSidecar bool = false
+
+@description('Entra tenant ID')
+param entraIdTenantId string = ''
+
+@description('Agent Identity Blueprint app (client) ID')
+param blueprintAppId string = ''
+
+@description('Agent Identity app (client) ID')
+param agentIdentityAppId string = ''
+
 @description('Model deployments for the hub Foundry')
 param hubModelDeployments array = [
   {
@@ -275,6 +287,10 @@ module spokeContainerApps 'modules/spoke/container-apps.bicep' = {
     privateEndpointSubnetId: spokeNetworking.outputs.privateEndpointSubnetId
     containerAppsDnsZoneId: hubDns.outputs.containerAppsDnsZoneId
     aiProjectEndpoint: deploySpokeFoundry ? spokeFoundry.outputs.projectEndpoint : ''
+    enableAuthSidecar: enableAuthSidecar
+    entraIdTenantId: entraIdTenantId
+    blueprintAppId: blueprintAppId
+    agentIdentityAppId: agentIdentityAppId
   }
 }
 
@@ -355,3 +371,6 @@ output acrLoginServer string = spokeContainerApps.outputs.acrLoginServer
 output sampleAppFqdn string = spokeContainerApps.outputs.sampleAppFqdn
 output chatFrontendUrl string = apimChatApi.outputs.chatFrontendUrl
 output spokeProjectEndpoint string = deploySpokeFoundry ? spokeFoundry.outputs.projectEndpoint : ''
+output containerAppMiPrincipalId string = spokeContainerApps.outputs.sampleAppPrincipalId
+output spokeStorageAccountName string = spokeContainerApps.outputs.spokeStorageAccountName
+output spokeStorageBlobEndpoint string = spokeContainerApps.outputs.spokeStorageBlobEndpoint

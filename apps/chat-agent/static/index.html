@@ -40,6 +40,12 @@
   .message.assistant .bubble { background: #fff; color: #1a1a2e; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .message.assistant .bubble img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
   .message.error .bubble { background: #fee; color: #c00; border: 1px solid #fcc; }
+  .message.tool-call { max-width: 720px; width: 100%; margin: 0 auto; }
+  .message.tool-call .tool-bubble { background: #f0f4ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 10px 14px; font-size: 12px; font-family: 'SF Mono', Monaco, monospace; color: #3730a3; }
+  .message.tool-call .tool-label { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6366f1; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .message.tool-call .tool-label::before { content: '⚡'; }
+  .message.tool-call .tool-args { color: #4338ca; margin: 4px 0; }
+  .message.tool-call .tool-result { color: #475569; margin-top: 6px; padding-top: 6px; border-top: 1px solid #c7d2fe; white-space: pre-wrap; max-height: 150px; overflow-y: auto; }
   .typing .bubble::after { content: '●●●'; animation: blink 1.2s infinite; }
   @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
 
@@ -202,6 +208,34 @@ function addMessage(role, content) {
   return div;
 }
 
+function addToolCall(name, args, result) {
+  const div = document.createElement('div');
+  div.className = 'message tool-call';
+  const bubble = document.createElement('div');
+  bubble.className = 'tool-bubble';
+  const label = document.createElement('div');
+  label.className = 'tool-label';
+  label.textContent = `Tool Call: ${name}`;
+  const argsDiv = document.createElement('div');
+  argsDiv.className = 'tool-args';
+  argsDiv.textContent = Object.keys(args).length > 0 ? `Args: ${JSON.stringify(args)}` : 'Args: (none)';
+  const resultDiv = document.createElement('div');
+  resultDiv.className = 'tool-result';
+  try {
+    const parsed = JSON.parse(result);
+    resultDiv.textContent = JSON.stringify(parsed, null, 2);
+  } catch {
+    resultDiv.textContent = result;
+  }
+  bubble.appendChild(label);
+  bubble.appendChild(argsDiv);
+  bubble.appendChild(resultDiv);
+  div.appendChild(bubble);
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  state[activeTab].elements.push(div);
+}
+
 function addTyping() {
   const div = document.createElement('div');
   div.className = 'message assistant typing';
@@ -307,6 +341,12 @@ async function sendDirect(text) {
     addMessage('error', `Error ${res.status}: ${err}`);
   } else {
     const data = await res.json();
+    // Show tool calls if any were made
+    if (data.tool_calls && data.tool_calls.length > 0) {
+      data.tool_calls.forEach(tc => {
+        addToolCall(tc.name, tc.arguments, tc.result);
+      });
+    }
     addMessage('assistant', data.reply);
     state.direct.history.push({ role: 'assistant', content: data.reply });
   }
