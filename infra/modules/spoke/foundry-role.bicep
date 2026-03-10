@@ -29,3 +29,18 @@ resource aiDeveloperRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
     principalType: 'ServicePrincipal'
   }
 }
+
+// Azure AI User — 53ca6127-db72-4b80-b1b0-d745d6d5456d
+// Required for agent write data actions (agents/write, threads, runs)
+resource aiUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, principalId, '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+  scope: foundryAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '53ca6127-db72-4b80-b1b0-d745d6d5456d' // Azure AI User
+    )
+    principalId: principalId
+    principalType: 'ServicePrincipal'
+  }
+}

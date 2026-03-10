@@ -8,7 +8,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHAT_APP_DIR="${SCRIPT_DIR}/../apps/chat-agent"
-HOSTED_APP_DIR="${SCRIPT_DIR}/../apps/hosted-agent"
 
 # azd populates env vars from Bicep outputs (exact output names)
 # Use eval to load them from azd env
@@ -84,34 +83,4 @@ azd env set CHAT_AGENT_PORT "8000" 2>/dev/null || true
 
 echo "📝 CHAT_AGENT_IMAGE=${IMAGE} saved to azd env"
 
-# ==========================================================================
-# Build & register hosted agent image (LangGraph container)
-# ==========================================================================
 
-HOSTED_IMAGE="${ACR_LOGIN_SERVER}/hosted-agent:${TAG}"
-
-echo "🔨 Building hosted-agent image: ${HOSTED_IMAGE}"
-az acr build \
-  --registry "$ACR_NAME" \
-  --image "hosted-agent:${TAG}" \
-  --image "hosted-agent:latest" \
-  "$HOSTED_APP_DIR" \
-  --no-logs
-
-azd env set HOSTED_AGENT_IMAGE "$HOSTED_IMAGE" 2>/dev/null || true
-echo "📝 HOSTED_AGENT_IMAGE=${HOSTED_IMAGE} saved to azd env"
-
-# Register the hosted agent with Foundry (HostedAgentDefinition)
-if [[ -n "$SPOKE_PROJECT" ]]; then
-  echo "📦 Registering hosted agent with Foundry..."
-  export AI_PROJECT_ENDPOINT="$SPOKE_PROJECT"
-  export HOSTED_AGENT_IMAGE="$HOSTED_IMAGE"
-  export APIM_GATEWAY_URL="${APIM_URL}"
-
-  pip install --quiet --pre "azure-ai-projects>=2.0.0b4" azure-identity 2>/dev/null || pip install --break-system-packages --quiet --pre "azure-ai-projects>=2.0.0b4" azure-identity 2>/dev/null || true
-  python3 "${SCRIPT_DIR}/deploy_hosted_agent.py" || {
-    echo "⚠️  Hosted agent registration failed — image built but not registered."
-  }
-else
-  echo "⏭️  spokeProjectEndpoint not set — skipping hosted agent registration."
-fi

@@ -344,20 +344,6 @@ module containerAppFoundryRole 'modules/spoke/foundry-role.bicep' = if (deploySp
 }
 
 // ============================================================================
-// Phase 8c — Foundry Project → ACR Pull RBAC (hosted agent image pull)
-// ============================================================================
-
-// AcrPull role so the Foundry project identity can pull hosted agent images
-module foundryAcrPullRole 'modules/spoke/acr-pull-role.bicep' = if (deploySpokeFoundry) {
-  scope: spokeRg
-  params: {
-    acrName: spokeAcrName
-    principalId: deploySpokeFoundry ? spokeFoundry.outputs.projectPrincipalId : ''
-  }
-  dependsOn: [spokeContainerApps]
-}
-
-// ============================================================================
 // Outputs
 // ============================================================================
 

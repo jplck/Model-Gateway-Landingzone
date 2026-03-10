@@ -1,23 +1,41 @@
 <policies>
   <inbound>
     <base />
-    <!-- Authenticate to Azure AI Services backend with APIM managed identity -->
-    <authentication-managed-identity resource="https://cognitiveservices.azure.com"
-                                     output-token-variable-name="managed-id-access-token"
-                                     ignore-error="false" />
-    <set-header name="Authorization" exists-action="override">
-      <value>@("Bearer " + (string)context.Variables["managed-id-access-token"])</value>
-    </set-header>
-    <!-- Remove client subscription key from backend request -->
-    <set-header name="api-key" exists-action="delete" />
-    <!-- Default api-version if caller omits it -->
-    <set-query-parameter name="api-version" exists-action="skip">
-      <value>2024-10-21</value>
-    </set-query-parameter>
     <!-- Rate limiting: 100 calls per minute per subscription -->
     <rate-limit calls="100" renewal-period="60" />
-    <!-- Route to Foundry backend -->
-    <set-backend-service backend-id="foundry-backend" />
+    <!--
+      Multi-backend routing:
+      - Default: Azure AI Foundry (managed identity auth)
+      - Custom:  Set header "x-backend-id" to the APIM backend name
+                 and pass the backend's API key in the "api-key" header.
+                 The key is forwarded as a Bearer token to the external backend.
+    -->
+    <choose>
+      <when condition="@(context.Request.Headers.ContainsKey("x-backend-id"))">
+        <!-- External backend: use client-provided api-key as Bearer token -->
+        <set-variable name="external-backend" value="@(context.Request.Headers.GetValueOrDefault("x-backend-id", ""))" />
+        <set-backend-service backend-id="@((string)context.Variables["external-backend"])" />
+        <set-header name="Authorization" exists-action="override">
+          <value>@("Bearer " + context.Request.Headers.GetValueOrDefault("api-key", ""))</value>
+        </set-header>
+        <set-header name="api-key" exists-action="delete" />
+        <set-header name="x-backend-id" exists-action="delete" />
+      </when>
+      <otherwise>
+        <!-- Azure AI Foundry: managed identity auth -->
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com"
+                                         output-token-variable-name="managed-id-access-token"
+                                         ignore-error="false" />
+        <set-header name="Authorization" exists-action="override">
+          <value>@("Bearer " + (string)context.Variables["managed-id-access-token"])</value>
+        </set-header>
+        <set-header name="api-key" exists-action="delete" />
+        <set-query-parameter name="api-version" exists-action="skip">
+          <value>2024-10-21</value>
+        </set-query-parameter>
+        <set-backend-service backend-id="foundry-backend" />
+      </otherwise>
+    </choose>
   </inbound>
   <backend>
     <base />

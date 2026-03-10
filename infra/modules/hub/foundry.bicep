@@ -165,6 +165,10 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
+    // Allow Foundry managed agent service (capability host) to access Cosmos DB
+    // The capability host runs on Microsoft infrastructure outside the VNet,
+    // so it needs the trusted services bypass even with private endpoints.
+    networkAclBypass: 'AzureServices'
   }
 }
 
