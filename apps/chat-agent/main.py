@@ -6,7 +6,6 @@ Routes:
   GET  /api/models     → Discover deployed models via APIM gateway
   POST /api/chat       → LangGraph agent (tool calling)
   POST /api/agent/chat → Foundry Agent (Agent SDK v2)
-  POST /api/hosted/chat→ Hosted Agent (LangGraph image-based)
   GET  /api/files      → List blobs in spoke storage
   GET  /api/auth/test  → Probe auth sidecar tokens
   GET  /health         → Health check
@@ -111,17 +110,6 @@ class AgentChatRequest(BaseModel):
 
 
 class AgentChatResponse(BaseModel):
-    reply: str
-    thread_id: str
-
-
-class HostedChatRequest(BaseModel):
-    message: str
-    model: str = "gpt-4o"
-    thread_id: str | None = None
-
-
-class HostedChatResponse(BaseModel):
     reply: str
     thread_id: str
 
@@ -281,16 +269,4 @@ def agent_chat_route(req: AgentChatRequest):
         raise HTTPException(502, f"Agent error: {e}")
 
 
-@app.post("/api/hosted/chat", response_model=HostedChatResponse)
-def hosted_chat_route(req: HostedChatRequest):
-    """Chat via Hosted Agent (LangGraph image) → APIM Gateway → Hub Foundry."""
-    from foundry_agent import hosted_chat
 
-    try:
-        reply, thread_id = hosted_chat(req.message, req.model, req.thread_id)
-        return HostedChatResponse(reply=reply, thread_id=thread_id)
-    except RuntimeError as e:
-        raise HTTPException(503, str(e))
-    except Exception as e:
-        logger.exception("Hosted agent call failed")
-        raise HTTPException(502, f"Hosted agent error: {e}")

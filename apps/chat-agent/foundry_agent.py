@@ -3,7 +3,7 @@
 import logging
 import re
 
-from config import AI_PROJECT_ENDPOINT, GATEWAY_CONNECTION_NAME, HOSTED_AGENT_NAME
+from config import AI_PROJECT_ENDPOINT, GATEWAY_CONNECTION_NAME
 
 logger = logging.getLogger("chat-agent")
 
@@ -83,45 +83,6 @@ def agent_chat(message: str, model: str, thread_id: str | None = None):
         "model": model_ref,
         "input": message,
         "extra_body": {"agent_reference": {"name": agent.name, "type": "agent_reference"}},
-    }
-    if thread_id:
-        kwargs["previous_response_id"] = thread_id
-
-    conv = oai.responses.create(**kwargs)
-
-    reply = ""
-    for output in conv.output:
-        if output.type == "message":
-            for content in output.content:
-                if content.type == "output_text":
-                    reply = content.text
-
-    return reply, conv.id
-
-
-# ---------------------------------------------------------------------------
-# Hosted Agent chat
-# ---------------------------------------------------------------------------
-
-
-def hosted_chat(message: str, model: str, thread_id: str | None = None):
-    """Run a Hosted Agent chat turn. Returns (reply, thread_id)."""
-    client = get_project_client()
-    if not client:
-        raise RuntimeError("Agent not configured. Set AI_PROJECT_ENDPOINT.")
-
-    model_ref = f"{GATEWAY_CONNECTION_NAME}/{model}"
-    oai = get_openai_client()
-
-    kwargs = {
-        "model": model_ref,
-        "input": message,
-        "extra_body": {
-            "agent_reference": {
-                "name": HOSTED_AGENT_NAME,
-                "type": "agent_reference",
-            }
-        },
     }
     if thread_id:
         kwargs["previous_response_id"] = thread_id

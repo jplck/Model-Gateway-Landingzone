@@ -15,4 +15,3 @@ AGENT_IDENTITY_APP_ID = os.environ.get("AGENT_IDENTITY_APP_ID", "")
 AZURE_TENANT_ID = os.environ.get(
     "AZURE_TENANT_ID", os.environ.get("AzureAd__TenantId", "")
 )
-HOSTED_AGENT_NAME = os.environ.get("HOSTED_AGENT_NAME", "gw-hosted-agent")
