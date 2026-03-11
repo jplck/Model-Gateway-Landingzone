@@ -257,6 +257,7 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                 ? [
                     { name: 'AGENTID_SIDECAR_URL', value: 'http://localhost:8080' }
                     { name: 'AGENT_IDENTITY_APP_ID', value: agentIdentityAppId }
+                    { name: 'AZURE_TENANT_ID', value: entraIdTenantId }
                     { name: 'STORAGE_ACCOUNT_URL', value: spokeStorage.properties.primaryEndpoints.blob }
                     { name: 'STORAGE_CONTAINER_NAME', value: storageContainerName }
                   ]

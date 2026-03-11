@@ -5,5 +5,7 @@ pydantic==2.9.0
 openai>=2.8.0
 langchain-openai>=0.3.0
 langgraph>=0.3.0
+microsoft-agents-a365-observability-core
+microsoft-agents-a365-observability-extensions-langchain
 azure-ai-projects>=2.0.0b4
 azure-identity>=1.19.0
