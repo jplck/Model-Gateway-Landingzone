@@ -6,11 +6,15 @@ This repository implements a **hub-spoke AI Gateway Landing Zone** on Azure. The
 
 The entire infrastructure is defined in Bicep, deployed via Azure Developer CLI (`azd`), and follows a phased approach where each phase can be deployed incrementally.
 
-The chat agent application offers **three modes** of AI interaction:
+The chat agent application offers **two modes** of AI interaction, with optional Entra Agent Identity and A365 observability:
 
-1. **Direct Inference** — OpenAI SDK → APIM → Hub Foundry (API key auth)
+1. **LangGraph Agent** — LangGraph ReAct agent with tools → APIM → Hub Foundry (API key or Agent Identity auth)
 2. **Foundry Agent** — PromptAgent SDK → Agent Service → APIM Gateway → Hub Foundry
-3. **Hosted Agent** — ImageBasedHostedAgent (LangGraph container) → APIM Gateway → Hub Foundry
+
+Optional capabilities:
+- **Entra Agent Identity** — Gives the agent its own security identity via Blueprint + Agent Identity + FIC + auth sidecar
+- **A365 Observability** — Automatic tracing of LangChain/LangGraph executions via the Microsoft Agent 365 SDK
+- **Spoke Storage** — Blob storage accessible via Agent Identity tokens, with a `list_files` tool for the LangGraph agent
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -52,9 +56,9 @@ The chat agent application offers **three modes** of AI interaction:
 │  │  │ publicNetworkAccess: Disabled       │                │  │ │ │  │
 │  │  │                                     │                │  │ │ │  │
 │  │  │  ┌───────────────────────────────┐  │                │  │ │ │  │
-│  │  │  │ Chat Agent (FastAPI+OpenAI)   │  │                │  │ │ │  │
-│  │  │  │ 3 modes: Direct/Agent/Hosted  │◄─┼────────────────┘  │ │ │  │
-│  │  │  │ Calls APIM /openai server-side│  │                   │ │ │  │
+│  │  │  │ Chat Agent (LangGraph+FastAPI) │  │                │  │ │ │  │
+│  │  │  │ + Auth Sidecar (optional)      │◄─┼────────────────┘  │ │ │  │
+│  │  │  │ Calls APIM /openai server-side │  │                   │ │ │  │
 │  │  │  └───────────────────────────────┘  │                   │ │ │  │
 │  │  └─────────────────────────────────────┘                   │ │ │  │
 │  │                                                             │ │ │  │
@@ -357,33 +361,38 @@ az acr build --registry <acr-name> --image chat-agent:latest ./apps/chat-agent
 
 ### Architecture
 
-The chat agent (`apps/chat-agent`) is a **FastAPI** server (v3.0.0) with three AI interaction modes and six routes:
+The chat agent (`apps/chat-agent`) is a **FastAPI** server (v4.0.0) split into four modules:
+
+| File | Responsibility |
+|------|----------------|
+| `config.py` | All environment variable reads |
+| `inference.py` | LangGraph ReAct agent, AzureChatOpenAI LLM, `list_files` tool, blob storage helper |
+| `foundry_agent.py` | Foundry Agent Service integration (lazy SDK init) |
+| `main.py` | FastAPI routes, A365 observability setup |
 
 | Route | Method | Purpose | SDK |
 |-------|--------|---------|-----|
-| `/` | GET | Chat UI (static HTML with 3-tab interface) | — |
+| `/` | GET | Chat UI (static HTML with tab interface) | — |
 | `/health` | GET | Health check + configuration status | — |
 | `/api/models` | GET | Dynamic model discovery via APIM gateway | httpx |
-| `/api/chat` | POST | Direct inference | OpenAI SDK (`AzureOpenAI`) |
-| `/api/agent/chat` | POST | Foundry Agent (PromptAgent) | azure-ai-projects (`AIProjectClient`) |
-| `/api/hosted/chat` | POST | Hosted Agent (LangGraph container) | azure-ai-projects (`AIProjectClient`) |
+| `/api/chat` | POST | LangGraph agent with tool calling | langchain-openai, langgraph |
+| `/api/agent/chat` | POST | Foundry Agent (PromptAgent) | azure-ai-projects |
+| `/api/files` | GET | List blobs in spoke storage | httpx + sidecar |
+| `/api/auth/test` | GET | Probe auth sidecar tokens | httpx |
 
-### Mode 1: Direct Inference (`/api/chat`)
+### Mode 1: LangGraph Agent (`/api/chat`)
 
-Uses the **OpenAI SDK** (`AzureOpenAI`) configured with the APIM gateway URL and subscription key:
+Uses **LangGraph** (`create_react_agent`) with **AzureChatOpenAI** from `langchain-openai`. The agent automatically invokes tools (like `list_files`) when needed and returns tool call details alongside the response for UI display.
 
-```python
-oai_direct = AzureOpenAI(
-    azure_endpoint=APIM_GATEWAY_URL,     # https://apim-xxx.azure-api.net
-    api_key=APIM_API_KEY,                 # APIM subscription key
-    api_version="2024-10-21",
-)
-response = oai_direct.chat.completions.create(model="gpt-4o", messages=messages)
-```
+The model deployment can be overridden per-request. When Agent Identity is enabled, the `list_files` tool uses the auth sidecar to get a Storage token and lists blobs via the Azure Blob REST API.
 
 The app authenticates to APIM with a subscription key, and APIM authenticates to Foundry with managed identity. The app never has direct access to Foundry credentials.
 
 ### Mode 2: Foundry Agent (`/api/agent/chat`)
+
+Uses the **Azure AI Projects SDK** (`AIProjectClient` + `PromptAgentDefinition`) to create prompt-based agents via the Foundry Agent Service. Multi-turn conversations are supported via `previous_response_id`.
+
+> **Note:** The hosted agent mode (LangGraph container running inside Foundry Agent Service) is available on the `feature/hosted-agent` branch.
 
 Uses the **Azure AI Projects SDK** (`AIProjectClient` + `PromptAgentDefinition`) to create prompt-based agents via the Foundry Agent Service:
 
@@ -590,7 +599,80 @@ azd provision
 
 ---
 
-## Observability
+## Entra Agent Identity (Optional)
+
+When enabled, the landing zone gives the chat agent its own Entra security identity — separate from the Container App's managed identity. This enables fine-grained, per-agent access control and supports two primary use cases:
+
+### Use Cases
+
+**Autonomous Agent** — The agent operates under its own security context. It authenticates as the Agent Identity and accesses Azure resources (storage, AI models) with RBAC roles assigned directly to the Agent Identity. No user involvement.
+
+**On-Behalf-Of (Digital Colleague)** — The agent acts on behalf of a user, carrying the user's security context. An Agentic User (Digital Colleague) is created with its own mailbox, Teams presence, and calendar. Delegated permissions are consented on the Agent Identity, and the agent performs actions (reading mail, scheduling meetings) as the user's digital colleague. This requires additional Entra configuration (Agent User, delegated permission grants) beyond what this repository implements.
+
+This landing zone demonstrates the **Autonomous Agent** pattern.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Container App Pod                                    │
+│                                                      │
+│  ┌──────────────────┐    ┌────────────────────────┐ │
+│  │   chat-agent      │    │   auth-sidecar         │ │
+│  │   (port 8000)     │◄──►│   (port 8080)          │ │
+│  │                   │    │                         │ │
+│  │ • LangGraph agent │    │ • MI → FIC → Blueprint  │ │
+│  │ • list_files tool │    │ • → Agent Identity      │ │
+│  │ • A365 telemetry  │    │ • → Resource Token      │ │
+│  └──────────────────┘    └────────────────────────┘ │
+│                                                      │
+│  System-Assigned Managed Identity                    │
+└─────────────────────────────────────────────────────┘
+```
+
+### Token Flow
+
+```
+Container App MI → FIC → Blueprint → Agent Identity → Resource Token
+```
+
+The `fmi_path` parameter specifies which Agent Identity to impersonate. The final token's `oid` is the Agent Identity — Azure RBAC checks permissions against it, not the MI or Blueprint.
+
+### Setup
+
+The `setup_agent_identity.sh` script automates the full chain via Graph API:
+
+1. Creates the Blueprint (`AgentIdentityBlueprint` app registration)
+2. Creates the Blueprint Service Principal
+3. Creates the Agent Identity (authenticating as the Blueprint with a temporary secret)
+4. Creates a FIC linking the Container App MI to the Blueprint
+5. Assigns RBAC roles (Storage Blob Data Contributor, Cognitive Services User) to the Agent Identity
+
+The auth sidecar (`mcr.microsoft.com/entra-sdk/auth-sidecar`) runs alongside the app and exposes `GET /AuthorizationHeaderUnauthenticated/{apiName}?AgentIdentity={id}` for credential-free token acquisition.
+
+### Spoke Storage
+
+When Agent Identity is enabled, a spoke storage account with a blob container (`agent-files`) is provisioned. The `list_files` LangChain tool uses the sidecar to get a Storage token and lists blobs via the Azure Blob REST API. The LangGraph agent can invoke this tool automatically when users ask about files.
+
+---
+
+## A365 Observability (Optional)
+
+The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that auto-instrument LangChain/LangGraph executions. When enabled, the following events are traced via OpenTelemetry:
+
+| LangChain Event | Agent365 Scope |
+|---|---|
+| Chain start/end | `InvokeAgentScope` |
+| LLM call start/end | `InferenceScope` (with token counts) |
+| Tool call start/end | `ExecuteToolScope` |
+
+Telemetry is exported to the Agent365 backend (`agent365.svc.cloud.microsoft`) using a token acquired from the sidecar's `AgentToken` downstream API. The `ENABLE_A365_OBSERVABILITY_EXPORTER=true` env var activates the exporter.
+
+The A365 observability packages (`microsoft-agents-a365-observability-core` and `microsoft-agents-a365-observability-extensions-langchain`) are included in the chat agent's requirements. They auto-configure at startup when the sidecar is available; if not installed, the app works normally without observability.
+
+---
+
+## Platform Observability
 
 | Resource | Purpose |
 |----------|---------|
@@ -615,6 +697,8 @@ APIM uses W3C trace correlation, so traces can be followed from browser → APIM
 | **Container App → APIM** | APIM subscription key (`spoke-subscription`) stored as a container app secret. Injected via `APIM_API_KEY` env var. |
 | **Container App → Foundry** | `DefaultAzureCredential` (system-assigned managed identity). Azure AI Developer role on the spoke Foundry account. |
 | **Container App → ACR** | System-assigned managed identity with `AcrPull` role. No admin credentials. |
+| **Agent Identity → Resources** | (Optional) When Agent Identity is enabled, the Agent Identity SP has `Storage Blob Data Contributor` on spoke storage and `Cognitive Services User` on the Foundry account. Tokens are acquired via the auth sidecar — no credentials in app code. |
+| **A365 Telemetry Export** | (Optional) Agent365 backend authentication via AgentToken acquired from the sidecar. |
 | **Foundry → ACR** | Project-level managed identity with `AcrPull` role (for hosted agent image pull). |
 | **Foundry → APIM** | APIM gateway connection with subscription key (for agent model inference). |
 | **All hub PaaS services** | Private endpoints only. Storage, AI Search, Cosmos DB, AI Services all accessible only via PE. |
@@ -727,3 +811,7 @@ curl -s -X POST https://<apim-url>/chat/api/hosted/chat \
 9. **Three-tier agent architecture** — Direct inference (OpenAI SDK), prompt agents (PromptAgentDefinition), and hosted agents (ImageBasedHostedAgentDefinition) all route through the same APIM gateway, giving teams flexibility to choose the right abstraction level.
 
 10. **Postprovision hook for CI** — Solves the chicken-and-egg problem (ACR must exist before image push) and handles the full lifecycle: build images → deploy container app → register hosted agent. Uses unique timestamp tags to avoid caching issues.
+
+11. **Entra Agent Identity for per-agent security** — Each agent gets its own Entra identity (Blueprint + Agent Identity + FIC) with dedicated RBAC roles. Supports both autonomous agents (own security context) and on-behalf-of agents (Digital Colleague pattern with delegated permissions). The auth sidecar centralizes token exchange in a separate container — the app code has zero auth logic.
+
+12. **A365 observability as an optional layer** — The Microsoft Agent 365 SDK auto-instruments LangChain/LangGraph executions when available. Traces are exported to the Agent365 backend using Agent Identity tokens. If the packages aren't installed, the app works without observability — no hard dependency.

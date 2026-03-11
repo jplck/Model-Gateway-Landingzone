@@ -1,6 +1,10 @@
 # Model Gateway Landing Zone
 
+> **Disclaimer:** This is a personal project and is not affiliated with, endorsed by, or representative of my employer. It is provided as-is, without warranty of any kind. Use at your own risk — no liability is assumed for any damages arising from the use of this code.
+
 Hub-and-spoke architecture on Azure providing a central AI model gateway (API Management) with observability, fronting Azure AI Foundry backends. Spokes consume models via the hub and host workloads on Container Apps.
+
+> **Note:** The included chat agent is an **autonomous agent** with a demo UI — it operates under its own identity without user impersonation. No on-behalf-of or delegated user flows are implemented. For the Digital Colleague pattern (agent acting as a user with mailbox, Teams, etc.), see the [Entra Agent ID preview guide](https://github.com/astaykov/entra-agent-id-preview-guide).
 
 ## Architecture
 
@@ -11,15 +15,21 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
 ### Traffic Flows
 
 ```
-  Flow 1: Direct Inference (POST /chat)
+  Flow 1: LangGraph Agent (POST /chat)
   ─────────────────────────────────────
 
   User ──► APIM /chat/* ──► (VNet) ──► Spoke CAE (PE) ──► Chat Agent /api/chat
                                           │
-                                          └──► OpenAI SDK ──► APIM /openai/*
-                                                                │
-                                                                └──► Hub AI Services
-                                                                     (gpt-4o)
+                                          └──► LangGraph ReAct Agent
+                                                  │
+                                                  ├──► AzureChatOpenAI ──► APIM /openai/*
+                                                  │                          │
+                                                  │                          └──► Hub AI Services
+                                                  │                               (gpt-4.1)
+                                                  │
+                                                  └──► list_files tool (optional)
+                                                         │
+                                                         └──► Auth Sidecar ──► Storage API
 
   Flow 2: Agent Chat (POST /agent/chat)
   ────────────────────────────────────
@@ -75,9 +85,10 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
 | **Subnets** | snet-apim, snet-pe, snet-agent | snet-container-apps, snet-pe, snet-agent |
 | **AI Foundry** | AI Services + Project + gpt-4o | AI Services + Project (no models) |
 | **APIM** | StandardV2, VNet integrated | — |
-| **Container Apps** | — | CAE + Chat Agent (private, PE only) |
+| **Container Apps** | — | CAE + Chat Agent + Auth Sidecar (optional) |
 | **ACR** | — | Container Registry (ACR Tasks) |
-| **Observability** | Log Analytics + App Insights | (uses hub workspace) |
+| **Storage** | File storage for agents | Spoke storage + blob container (optional, for Agent Identity) |
+| **Observability** | Log Analytics + App Insights | A365 Observability (optional) |
 | **Private DNS** | 7 zones (linked to both VNets) | — |
 | **Agent Service** | — | Capability Host + gateway connection → APIM |
 
@@ -206,18 +217,11 @@ azd up
 #    (The script sets ENABLE_AUTH_SIDECAR=true + BLUEPRINT_APP_ID + AGENT_IDENTITY_APP_ID in azd env)
 azd up
 
-# 5. Grant resource access to the Agent Identity
-az role assignment create \
-  --assignee-object-id <agent-identity-object-id> \
-  --assignee-principal-type ServicePrincipal \
-  --role 'Cognitive Services User' \
-  --scope <foundry-account-resource-id>
+# 5. (Optional) Set up Agent Identity + RBAC (the script handles role assignments)
+./scripts/setup_agent_identity.sh
 
-az role assignment create \
-  --assignee-object-id <agent-identity-object-id> \
-  --assignee-principal-type ServicePrincipal \
-  --role 'Storage Blob Data Contributor' \
-  --scope <spoke-storage-account-resource-id>
+# 6. Redeploy with auth sidecar enabled
+azd up
 ```
 
 The setup script prints the Agent Identity object ID and app ID at the end. These are also saved in `azd env` as `AGENT_IDENTITY_APP_ID` and `BLUEPRINT_APP_ID`.
@@ -226,8 +230,8 @@ The setup script prints the Agent Identity object ID and app ID at the end. Thes
 
 - A sidecar container joins the chat agent pod, exposing `http://localhost:8080`
 - The sidecar is configured with `DownstreamApis` for CognitiveServices, Storage, and AgentToken
-- The chat agent calls `GET http://localhost:8080/api/token/{ApiName}` to get Bearer tokens
-- The `/api/files` endpoint and `list_files` tool use the Storage token to list blobs
+- The chat agent calls `GET http://localhost:8080/AuthorizationHeaderUnauthenticated/{ApiName}?AgentIdentity={id}` to get Bearer tokens
+- The `/api/files` endpoint and `list_files` LangGraph tool use the Storage token to list blobs
 
 **Related parameters:**
 
@@ -237,10 +241,22 @@ The setup script prints the Agent Identity object ID and app ID at the end. Thes
 | `entraIdTenantId` | `""` | Entra tenant ID |
 | `blueprintAppId` | `""` | Blueprint app (client) ID |
 | `agentIdentityAppId` | `""` | Agent Identity app (client) ID |
+| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter |
 
 **Reference:** [Entra Agent ID preview guide](https://github.com/astaykov/entra-agent-id-preview-guide)
 **Reference:** [Entra Agent ID with Azure Apps](https://github.com/ivanthelad/agentid-app-fic)
+### Optional: A365 Observability
 
+The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that automatically trace LangGraph agent executions — LLM calls, tool invocations, and chain runs. Telemetry is exported to the Agent365 backend using a token acquired via the auth sidecar.
+
+Enable during `azd up` when prompted, or manually:
+
+```bash
+azd env set ENABLE_A365_OBSERVABILITY true
+azd up
+```
+
+See the [Agent Identity Guide](agent-identity-guide.md) for details on the full setup.
 ## Parameters
 
 | Parameter | Default | Description |
@@ -252,6 +268,8 @@ The setup script prints the Agent Identity object ID and app ID at the end. Thes
 | `publisherEmail` | `admin@contoso.com` | APIM publisher email |
 | `publisherName` | `AI Gateway Team` | APIM publisher name |
 | `hubModelDeployments` | `[gpt-4o]` | Models to deploy on hub Foundry |
+| `enableAuthSidecar` | `false` | Deploy Agent ID auth sidecar alongside chat agent |
+| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter |
 
 ## Testing the Gateway
 
@@ -300,14 +318,21 @@ curl -X POST "${APIM_URL}/openai/deployments/gpt-4o/chat/completions?api-version
 │       └── dns-zone-link.bicep         # DNS zone link helper
 ├── apps/
 │   └── chat-agent/
-│       ├── main.py                     # Dual-mode FastAPI (direct + agent)
+│       ├── config.py                   # Shared configuration (env vars)
+│       ├── inference.py                # LangGraph ReAct agent, tools, blob storage
+│       ├── foundry_agent.py            # Foundry Agent Service integration
+│       ├── main.py                     # FastAPI routes, A365 observability setup
 │       ├── Dockerfile                  # Python 3.12-slim, port 8000
-│       ├── requirements.txt            # OpenAI, azure-ai-projects, FastAPI
+│       ├── requirements.txt            # LangChain, LangGraph, A365, FastAPI
 │       └── static/
-│           └── index.html              # Chat UI with model selector
+│           └── index.html              # Chat UI with model selector + tool call display
 ├── scripts/
-│   └── postprovision.sh               # Build + deploy hook (ACR Tasks)
-├── architecture.md                     # Detailed architecture diagram
+│   ├── postprovision.sh               # Build + deploy hook (ACR Tasks)
+│   ├── preprovision.sh                # Optional feature prompts (A365 observability)
+│   ├── setup_agent_identity.sh        # Agent Identity setup (Blueprint, FIC, RBAC)
+│   ├── deploy-chat-agent.sh           # Manual build + deploy
+│   └── test-gateway.sh                # Gateway test suite
+├── agent-identity-guide.md            # Entra Agent Identity implementation guide
 ├── spec.md                             # Architecture specification
 └── tasks.md                            # Implementation task list
 ```
