@@ -7,6 +7,10 @@ infra:
   path: infra
   module: main
 hooks:
+  preprovision:
+    shell: sh
+    run: scripts/preprovision.sh
+    interactive: true
   postprovision:
     shell: sh
     run: scripts/postprovision.sh

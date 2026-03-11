@@ -359,6 +359,42 @@ azd env set ENABLE_AUTH_SIDECAR "true" 2>/dev/null || true
 echo "  ✓ Saved to azd env"
 
 # =========================================================================
+# Step 6: Assign RBAC roles to the Agent Identity
+# =========================================================================
+echo ""
+echo "6️⃣  Assigning RBAC roles to Agent Identity..."
+
+# Storage Blob Data Contributor on spoke storage
+SPOKE_RG="${spokeResourceGroupName:-}"
+if [[ -n "$SPOKE_RG" ]]; then
+  STORAGE_ID=$(az storage account list -g "$SPOKE_RG" --query "[0].id" -o tsv 2>/dev/null || true)
+  if [[ -n "$STORAGE_ID" ]]; then
+    az role assignment create \
+      --assignee-object-id "$AGENT_IDENTITY_ID" \
+      --assignee-principal-type ServicePrincipal \
+      --role 'Storage Blob Data Contributor' \
+      --scope "$STORAGE_ID" \
+      --output none 2>/dev/null || true
+    echo "  ✓ Storage Blob Data Contributor → ${STORAGE_ID##*/}"
+  fi
+fi
+
+# Cognitive Services User on hub Foundry account
+HUB_RG="${hubResourceGroupName:-}"
+if [[ -n "$HUB_RG" ]]; then
+  FOUNDRY_ID=$(az cognitiveservices account list -g "$HUB_RG" --query "[0].id" -o tsv 2>/dev/null || true)
+  if [[ -n "$FOUNDRY_ID" ]]; then
+    az role assignment create \
+      --assignee-object-id "$AGENT_IDENTITY_ID" \
+      --assignee-principal-type ServicePrincipal \
+      --role 'Cognitive Services User' \
+      --scope "$FOUNDRY_ID" \
+      --output none 2>/dev/null || true
+    echo "  ✓ Cognitive Services User → ${FOUNDRY_ID##*/}"
+  fi
+fi
+
+# =========================================================================
 # Summary
 # =========================================================================
 echo ""
@@ -375,11 +411,4 @@ echo "  Next steps:"
 echo "    1. Run 'azd up' to redeploy with the auth sidecar enabled"
 echo "    2. The sidecar handles the full token exchange automatically:"
 echo "       MI → FIC → Blueprint → Agent Identity → Resource Token"
-echo ""
-echo "  To grant resource access to the Agent Identity:"
-echo "    az role assignment create \\"
-echo "      --assignee-object-id ${AGENT_IDENTITY_ID} \\"
-echo "      --assignee-principal-type ServicePrincipal \\"
-echo "      --role 'Cognitive Services User' \\"
-echo "      --scope <foundry-account-resource-id>"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

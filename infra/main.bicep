@@ -56,6 +56,9 @@ param blueprintAppId string = ''
 @description('Agent Identity app (client) ID')
 param agentIdentityAppId string = ''
 
+@description('Enable A365 observability telemetry exporter (requires auth sidecar)')
+param enableA365Observability bool = false
+
 @description('Model deployments for the hub Foundry')
 param hubModelDeployments array = [
   {
@@ -291,6 +294,7 @@ module spokeContainerApps 'modules/spoke/container-apps.bicep' = {
     entraIdTenantId: entraIdTenantId
     blueprintAppId: blueprintAppId
     agentIdentityAppId: agentIdentityAppId
+    enableA365Observability: enableA365Observability
   }
 }
 

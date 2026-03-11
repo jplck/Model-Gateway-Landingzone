@@ -14,3 +14,4 @@ param enableAuthSidecar = readEnvironmentVariable('ENABLE_AUTH_SIDECAR', 'false'
 param entraIdTenantId = readEnvironmentVariable('AZURE_TENANT_ID', '')
 param blueprintAppId = readEnvironmentVariable('BLUEPRINT_APP_ID', '')
 param agentIdentityAppId = readEnvironmentVariable('AGENT_IDENTITY_APP_ID', '')
+param enableA365Observability = readEnvironmentVariable('ENABLE_A365_OBSERVABILITY', 'false') == 'true'

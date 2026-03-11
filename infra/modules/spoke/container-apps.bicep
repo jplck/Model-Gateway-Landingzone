@@ -64,6 +64,9 @@ param agentIdentityAppId string = ''
 @description('Name for the blob container in the spoke storage account')
 param storageContainerName string = 'agent-files'
 
+@description('Enable A365 observability telemetry exporter')
+param enableA365Observability bool = false
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -261,6 +264,11 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                     { name: 'STORAGE_ACCOUNT_URL', value: spokeStorage.properties.primaryEndpoints.blob }
                     { name: 'STORAGE_CONTAINER_NAME', value: storageContainerName }
                   ]
+                : [],
+              enableAuthSidecar && enableA365Observability
+                ? [
+                    { name: 'ENABLE_A365_OBSERVABILITY_EXPORTER', value: 'true' }
+                  ]
                 : []
             )
           }
@@ -269,7 +277,7 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
           ? [
               {
                 name: 'auth-sidecar'
-                image: 'mcr.microsoft.com/entra-sdk/auth-sidecar:1.0.0-rc.2-azurelinux3.0-distroless'
+                image: 'mcr.microsoft.com/entra-sdk/auth-sidecar:1.0.0-azurelinux3.0-distroless'
                 resources: {
                   cpu: json('0.25')
                   memory: '0.5Gi'
@@ -299,10 +307,6 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                     name: 'DownstreamApis__CognitiveServices__RequestAppToken'
                     value: 'true'
                   }
-                  {
-                    name: 'DownstreamApis__CognitiveServices__AcquireTokenOptions__FmiPath'
-                    value: agentIdentityAppId
-                  }
                   // --- Downstream API: Azure Storage (blob access) ---
                   {
                     name: 'DownstreamApis__Storage__BaseUrl'
@@ -315,10 +319,6 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                   {
                     name: 'DownstreamApis__Storage__RequestAppToken'
                     value: 'true'
-                  }
-                  {
-                    name: 'DownstreamApis__Storage__AcquireTokenOptions__FmiPath'
-                    value: agentIdentityAppId
                   }
                   // --- Downstream API: Agent Token (FIC exchange token for introspection) ---
                   {

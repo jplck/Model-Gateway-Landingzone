@@ -79,8 +79,13 @@ else
 fi
 
 # Persist the image tag so the next `azd provision` uses it in Bicep
-azd env set CHAT_AGENT_IMAGE "$IMAGE" 2>/dev/null || true
-azd env set CHAT_AGENT_PORT "8000" 2>/dev/null || true
+# Write directly to .env file to avoid azd interactive prompts
+AZD_ENV_FILE="$(azd env list -o json 2>/dev/null | python3 -c "import json,sys;envs=json.load(sys.stdin);print(next(e['dotEnvPath'] for e in envs if e.get('isDefault')))" 2>/dev/null || true)"
+if [[ -n "$AZD_ENV_FILE" && -f "$AZD_ENV_FILE" ]]; then
+  sed -i '/^CHAT_AGENT_IMAGE=/d; /^CHAT_AGENT_PORT=/d' "$AZD_ENV_FILE"
+  echo "CHAT_AGENT_IMAGE=\"${IMAGE}\"" >> "$AZD_ENV_FILE"
+  echo "CHAT_AGENT_PORT=\"8000\"" >> "$AZD_ENV_FILE"
+fi
 
 echo "📝 CHAT_AGENT_IMAGE=${IMAGE} saved to azd env"
 

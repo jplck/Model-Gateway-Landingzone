@@ -50,12 +50,17 @@ if AGENTID_SIDECAR_URL and AGENT_IDENTITY_APP_ID:
         def _a365_token_resolver(agent_id: str, tenant_id: str) -> str | None:
             """Resolve an AgentToken from the auth sidecar for A365 telemetry export."""
             try:
+                params = {}
+                if AGENT_IDENTITY_APP_ID:
+                    params["AgentIdentity"] = AGENT_IDENTITY_APP_ID
                 resp = _requests.get(
-                    f"{AGENTID_SIDECAR_URL}/api/token/AgentToken",
+                    f"{AGENTID_SIDECAR_URL}/AuthorizationHeaderUnauthenticated/AgentToken",
+                    params=params,
                     timeout=10,
                 )
                 if resp.status_code == 200:
-                    return resp.json().get("access_token")
+                    header = resp.json().get("authorizationHeader", "")
+                    return header.replace("Bearer ", "") if header else None
                 logger.warning("Sidecar AgentToken request failed: %s", resp.status_code)
             except Exception as e:
                 logger.warning("Failed to resolve A365 token: %s", e)
@@ -150,21 +155,28 @@ async def test_auth_sidecar():
     results = {}
     async with httpx.AsyncClient(timeout=10) as client:
         try:
-            r = await client.get(f"{AGENTID_SIDECAR_URL}/health")
+            r = await client.get(f"{AGENTID_SIDECAR_URL}/healthz")
             results["sidecar_health"] = {"status": r.status_code, "body": r.text[:500]}
         except Exception as e:
             results["sidecar_health"] = {"error": str(e)}
 
+        params = {}
+        if AGENT_IDENTITY_APP_ID:
+            params["AgentIdentity"] = AGENT_IDENTITY_APP_ID
+
         for api_name in ["CognitiveServices", "Storage", "AgentToken"]:
             try:
-                r = await client.get(f"{AGENTID_SIDECAR_URL}/api/token/{api_name}")
+                r = await client.get(
+                    f"{AGENTID_SIDECAR_URL}/AuthorizationHeaderUnauthenticated/{api_name}",
+                    params=params,
+                )
                 if r.status_code == 200:
-                    token_data = r.json()
-                    access_token = token_data.get("access_token", "")
+                    data = r.json()
+                    header = data.get("authorizationHeader", "")
                     results[api_name] = {
                         "status": "ok",
-                        "token_length": len(access_token),
-                        "token_prefix": access_token[:20] + "..." if access_token else "",
+                        "token_length": len(header),
+                        "token_prefix": header[:27] + "..." if header else "",
                     }
                 else:
                     results[api_name] = {"status": r.status_code, "body": r.text[:500]}

@@ -16,6 +16,7 @@ from config import (
     API_VERSION,
     DEPLOYMENT_NAME,
     AGENTID_SIDECAR_URL,
+    AGENT_IDENTITY_APP_ID,
     STORAGE_ACCOUNT_URL,
     STORAGE_CONTAINER_NAME,
 )
@@ -49,11 +50,18 @@ async def list_blobs(prefix: str = "") -> list[dict]:
     if not AGENTID_SIDECAR_URL or not STORAGE_ACCOUNT_URL:
         return []
     async with httpx.AsyncClient(timeout=15) as client:
-        token_resp = await client.get(f"{AGENTID_SIDECAR_URL}/api/token/Storage")
-        if token_resp.status_code != 200:
+        # Get authorization header from sidecar (app-only / autonomous agent flow)
+        params = {}
+        if AGENT_IDENTITY_APP_ID:
+            params["AgentIdentity"] = AGENT_IDENTITY_APP_ID
+        auth_resp = await client.get(
+            f"{AGENTID_SIDECAR_URL}/AuthorizationHeaderUnauthenticated/Storage",
+            params=params,
+        )
+        if auth_resp.status_code != 200:
             return []
-        access_token = token_resp.json().get("access_token", "")
-        if not access_token:
+        auth_header = auth_resp.json().get("authorizationHeader", "")
+        if not auth_header:
             return []
         list_url = (
             f"{STORAGE_ACCOUNT_URL.rstrip('/')}/{STORAGE_CONTAINER_NAME}"
@@ -62,7 +70,7 @@ async def list_blobs(prefix: str = "") -> list[dict]:
         blob_resp = await client.get(
             list_url,
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": auth_header,
                 "x-ms-version": "2024-11-04",
             },
         )
