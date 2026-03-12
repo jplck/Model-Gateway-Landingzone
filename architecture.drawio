@@ -1,316 +1,276 @@
-<mxfile host="app.diagrams.net" modified="2026-03-04T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
-  <diagram id="aigw-lz" name="AI Gateway Landing Zone">
-    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <!-- Azure Subscription -->
-        <mxCell id="sub" value="Azure Subscription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontSize=14;verticalAlign=top;spacingTop=5;dashed=1;dashPattern=5 5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="20" y="20" width="1560" height="1060" as="geometry" />
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- Hub Resource Group -->
-        <!-- ================================================================ -->
-        <mxCell id="hub-rg" value="Hub Resource Group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontStyle=1;fontSize=13;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="40" y="60" width="740" height="1000" as="geometry" />
-        </mxCell>
-
-        <!-- Hub VNet -->
-        <mxCell id="hub-vnet" value="Hub VNet  10.0.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontStyle=1;fontSize=11;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="60" y="100" width="700" height="490" as="geometry" />
-        </mxCell>
-
-        <!-- snet-apim -->
-        <mxCell id="snet-apim" value="snet-apim  10.0.1.0/24&#xa;(delegated: Microsoft.Web/serverFarms)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="80" y="140" width="310" height="190" as="geometry" />
-        </mxCell>
-
-        <!-- APIM -->
-        <mxCell id="apim" value="API Management&#xa;(StandardV2)&#xa;&#xa;VNet Integration (outbound)&#xa;&#xa;APIs:&#xa;  /openai/*  (model gateway)&#xa;  /chat/*  (chat frontend)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;spacingTop=2;" vertex="1" parent="1">
-          <mxGeometry x="100" y="180" width="270" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- snet-pe (hub) -->
-        <mxCell id="snet-pe-hub" value="snet-pe  10.0.2.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="80" y="350" width="310" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- Hub Private Endpoints -->
-        <mxCell id="hub-pe" value="Private Endpoints&#xa;• AI Services&#xa;• Storage&#xa;• AI Search&#xa;• Cosmos DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="100" y="380" width="180" height="85" as="geometry" />
-        </mxCell>
-
-        <!-- snet-agent (hub) -->
-        <mxCell id="snet-agent-hub" value="snet-agent  10.0.3.0/24&#xa;(Foundry Agent Service)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=middle;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="80" y="500" width="310" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- Hub AI Foundry -->
-        <mxCell id="hub-foundry" value="Hub AI Foundry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontStyle=1;fontSize=12;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="420" y="100" width="340" height="280" as="geometry" />
-        </mxCell>
-
-        <!-- Hub AI Services Account -->
-        <mxCell id="hub-ais" value="AI Services Account&#xa;└─ gpt-4o deployment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00A36C;strokeColor=#007A4D;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="440" y="140" width="200" height="50" as="geometry" />
-        </mxCell>
-
-        <!-- Hub Foundry Project -->
-        <mxCell id="hub-proj" value="Foundry Project&#xa;└─ Capability Host" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B8D4B8;strokeColor=#82B366;fontSize=10;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="440" y="200" width="200" height="45" as="geometry" />
-        </mxCell>
-
-        <!-- Hub Backing Resources -->
-        <mxCell id="hub-backing" value="Backing Resources:&#xa;• Storage Account&#xa;• AI Search&#xa;• Cosmos DB (data-plane RBAC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="440" y="255" width="200" height="65" as="geometry" />
-        </mxCell>
-
-        <!-- Hub Connections -->
-        <mxCell id="hub-conn" value="Connections:  storage, search, cosmos, App Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=center;" vertex="1" parent="1">
-          <mxGeometry x="440" y="330" width="300" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- Observability -->
-        <mxCell id="observability" value="Observability&#xa;• Log Analytics Workspace&#xa;• Application Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="420" y="400" width="220" height="65" as="geometry" />
-        </mxCell>
-
-        <!-- Private DNS Zones -->
-        <mxCell id="dns-zones" value="Private DNS Zones (hub-hosted)&#xa;• cognitiveservices  • openai  • ai services&#xa;• blob storage  • search  • cosmos db&#xa;• container apps&#xa;(linked to both hub &amp; spoke VNets)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=0;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="420" y="485" width="320" height="80" as="geometry" />
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- Spoke Resource Group -->
-        <!-- ================================================================ -->
-        <mxCell id="spoke-rg" value="Spoke Resource Group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontStyle=1;fontSize=13;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="810" y="60" width="750" height="1000" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke VNet -->
-        <mxCell id="spoke-vnet" value="Spoke VNet  10.1.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontStyle=1;fontSize=11;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="830" y="100" width="710" height="490" as="geometry" />
-        </mxCell>
-
-        <!-- snet-container-apps -->
-        <mxCell id="snet-ca" value="snet-container-apps  10.1.1.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="850" y="140" width="330" height="250" as="geometry" />
-        </mxCell>
-
-        <!-- Container Apps Environment -->
-        <mxCell id="cae" value="Container Apps Environment&#xa;(Consumption)&#xa;publicNetworkAccess = Disabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4DB8FF;strokeColor=#0078D4;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="870" y="180" width="290" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- Chat Agent App -->
-        <mxCell id="chat-agent" value="Chat Agent (FastAPI)&#xa;Port 8000&#xa;&#xa;GET /api/models&#xa;POST /api/chat&#xa;POST /api/agent/chat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050EF;strokeColor=#003087;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="900" y="215" width="230" height="80" as="geometry" />
-        </mxCell>
-
-        <!-- Private Endpoint (CAE wildcard) -->
-        <mxCell id="cae-pe" value="Private Endpoint&#xa;(CAE wildcard DNS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="870" y="330" width="150" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- snet-pe (spoke) -->
-        <mxCell id="snet-pe-spoke" value="snet-pe  10.1.2.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="850" y="410" width="330" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke Private Endpoints -->
-        <mxCell id="spoke-pe" value="Private Endpoints&#xa;• AI Services&#xa;• Storage&#xa;• AI Search&#xa;• Cosmos DB&#xa;• ACR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="870" y="440" width="170" height="85" as="geometry" />
-        </mxCell>
-
-        <!-- snet-agent (spoke) -->
-        <mxCell id="snet-agent-spoke" value="snet-agent  10.1.3.0/24&#xa;(Foundry Agent Service)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=middle;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="850" y="555" width="330" height="50" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke AI Foundry -->
-        <mxCell id="spoke-foundry" value="Spoke AI Foundry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontStyle=1;fontSize=12;verticalAlign=top;spacingTop=5;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="1210" y="100" width="330" height="320" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke AI Services Account -->
-        <mxCell id="spoke-ais" value="AI Services Account&#xa;(no model deployments)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00A36C;strokeColor=#007A4D;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="1230" y="140" width="200" height="45" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke Foundry Project -->
-        <mxCell id="spoke-proj" value="Foundry Project&#xa;└─ Capability Host" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B8D4B8;strokeColor=#82B366;fontSize=10;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="1230" y="195" width="200" height="45" as="geometry" />
-        </mxCell>
-
-        <!-- Spoke Connections -->
-        <mxCell id="spoke-conn" value="Connections:&#xa;• storage, search, cosmos&#xa;• App Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="1230" y="250" width="200" height="50" as="geometry" />
-        </mxCell>
-
-        <!-- Gateway Connection -->
-        <mxCell id="gw-conn" value="apim-gateway (ApiMgmt)&#xa;→ APIM /openai endpoint&#xa;Dynamic model discovery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="1230" y="310" width="200" height="55" as="geometry" />
-        </mxCell>
-
-        <!-- ACR -->
-        <mxCell id="acr" value="Azure Container Registry&#xa;(ACR Tasks)&#xa;chat-agent:v{timestamp}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;fontSize=10;verticalAlign=middle;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="1210" y="440" width="240" height="65" as="geometry" />
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- VNet Peering -->
-        <!-- ================================================================ -->
-        <mxCell id="peering" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;startFill=1;endFill=1;width=8;endSize=4;startSize=4;" edge="1" parent="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="760" y="350" as="sourcePoint" />
-            <mxPoint x="830" y="350" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="peering-label" value="VNet Peering&#xa;(bidirectional)" style="text;html=1;align=center;verticalAlign=middle;fontSize=9;fontStyle=2;fontColor=#9673A6;" vertex="1" parent="1">
-          <mxGeometry x="756" y="365" width="100" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- Connection: APIM → Hub AI Services (via PE) -->
-        <!-- ================================================================ -->
-        <mxCell id="apim-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#00A36C;strokeWidth=2;dashed=1;" edge="1" parent="1" source="apim" target="hub-ais">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="apim-to-hub-label" value="/openai/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#00A36C;fontStyle=2;" vertex="1" connectable="0" parent="apim-to-hub">
-          <mxGeometry x="-0.2" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Connection: APIM → Chat Agent (via VNet + PE) -->
-        <mxCell id="apim-to-ca" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#0050EF;strokeWidth=2;dashed=1;" edge="1" parent="1" source="apim" target="chat-agent">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="apim-to-ca-label" value="/chat/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#0050EF;fontStyle=2;" vertex="1" connectable="0" parent="apim-to-ca">
-          <mxGeometry x="-0.2" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Connection: Chat Agent → APIM (OpenAI SDK / httpx) -->
-        <mxCell id="ca-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=2;curved=1;" edge="1" parent="1" source="chat-agent" target="apim">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="800" y="230" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="ca-to-apim-label" value="OpenAI SDK&#xa;/openai/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" vertex="1" connectable="0" parent="ca-to-apim">
-          <mxGeometry x="-0.3" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Connection: Chat Agent → Spoke Foundry (Agent SDK) -->
-        <mxCell id="ca-to-spoke-foundry" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#82B366;strokeWidth=2;" edge="1" parent="1" source="chat-agent" target="spoke-proj">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="ca-to-spoke-foundry-label" value="PromptAgent SDK" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#82B366;fontStyle=2;" vertex="1" connectable="0" parent="ca-to-spoke-foundry">
-          <mxGeometry x="-0.2" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Connection: Gateway Connection → APIM -->
-        <mxCell id="gw-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#B85450;strokeWidth=2;dashed=1;dashPattern=8 4;curved=1;" edge="1" parent="1" source="gw-conn" target="apim">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1100" y="600" />
-              <mxPoint x="500" y="600" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="gw-to-apim-label" value="apim-gateway → /openai/*&#xa;(dynamic model discovery)" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#B85450;fontStyle=2;" vertex="1" connectable="0" parent="gw-to-apim">
-          <mxGeometry x="-0.1" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Connection: ACR → Chat Agent (image pull) -->
-        <mxCell id="acr-to-ca" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" edge="1" parent="1" source="acr" target="cae">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="acr-to-ca-label" value="image pull" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" vertex="1" connectable="0" parent="acr-to-ca">
-          <mxGeometry x="-0.2" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- Internet / User -->
-        <!-- ================================================================ -->
-        <mxCell id="user" value="User / Client" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=10;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="180" y="680" width="60" height="60" as="geometry" />
-        </mxCell>
-
-        <mxCell id="user-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#0078D4;strokeWidth=2;" edge="1" parent="1" source="user" target="apim">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="user-to-apim-label" value="HTTPS" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=9;fontColor=#0078D4;fontStyle=1;" vertex="1" connectable="0" parent="user-to-apim">
-          <mxGeometry x="-0.2" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- CI/CD label -->
-        <!-- ================================================================ -->
-        <mxCell id="cicd" value="CI/CD:  azd provision → postprovision.sh → az acr build → az containerapp update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#999999;fontSize=10;fontStyle=2;verticalAlign=middle;align=center;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="830" y="620" width="500" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- Observability → Hub Foundry -->
-        <mxCell id="obs-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" edge="1" parent="1" source="observability" target="hub-conn">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Observability → Spoke -->
-        <mxCell id="obs-to-spoke" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;curved=1;" edge="1" parent="1" source="observability" target="spoke-conn">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="790" y="430" />
-              <mxPoint x="790" y="275" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="obs-to-spoke-label" value="App Insights" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" vertex="1" connectable="0" parent="obs-to-spoke">
-          <mxGeometry x="-0.3" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- DNS link arrows -->
-        <mxCell id="dns-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" edge="1" parent="1" source="dns-zones" target="hub-vnet">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="dns-to-spoke" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;curved=1;" edge="1" parent="1" source="dns-zones" target="spoke-vnet">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="790" y="520" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-
-        <!-- ================================================================ -->
-        <!-- Resource Summary Table -->
-        <!-- ================================================================ -->
-        <mxCell id="summary-title" value="Resource Summary" style="text;html=1;align=left;verticalAlign=middle;fontSize=13;fontStyle=5;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="40" y="690" width="200" height="25" as="geometry" />
-        </mxCell>
-
-        <!-- Table header -->
-        <mxCell id="tbl-hdr" value="&lt;table style='border-collapse:collapse;font-size:10px;width:100%'&gt;&lt;tr style='background:#DAE8FC;font-weight:bold'&gt;&lt;td style='border:1px solid #999;padding:4px;width:140px'&gt;Component&lt;/td&gt;&lt;td style='border:1px solid #999;padding:4px;width:250px'&gt;Hub&lt;/td&gt;&lt;td style='border:1px solid #999;padding:4px;width:250px'&gt;Spoke&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;VNet&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;10.0.0.0/16&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;10.1.0.0/16&lt;/td&gt;&lt;/tr&gt;&lt;tr style='background:#F5F5F5'&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Subnets&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;snet-apim, snet-pe, snet-agent&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;snet-container-apps, snet-pe, snet-agent&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;AI Foundry&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;AI Services + Project + gpt-4o&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;AI Services + Project (no models)&lt;/td&gt;&lt;/tr&gt;&lt;tr style='background:#F5F5F5'&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;APIM&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;StandardV2, VNet integrated&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;—&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Container Apps&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;—&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;CAE + Chat Agent (private, PE only)&lt;/td&gt;&lt;/tr&gt;&lt;tr style='background:#F5F5F5'&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;ACR&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;—&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Container Registry (ACR Tasks)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Observability&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Log Analytics + App Insights&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;(uses hub workspace)&lt;/td&gt;&lt;/tr&gt;&lt;tr style='background:#F5F5F5'&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Private DNS&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;7 zones (linked to both VNets)&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;—&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Agent Service&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;—&lt;/td&gt;&lt;td style='border:1px solid #999;padding:3px'&gt;Capability Host + gateway → APIM&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" style="text;html=1;overflow=fill;spacingLeft=2;spacingRight=2;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="40" y="720" width="680" height="310" as="geometry" />
-        </mxCell>
-
-      </root>
-    </mxGraphModel>
-  </diagram>
+<mxfile host="65bd71144e">
+    <diagram id="aigw-lz" name="AI Gateway Landing Zone">
+        <mxGraphModel dx="3292" dy="1582" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1500" background="#FFFFFF" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="sub" value="Azure Subscription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontSize=14;verticalAlign=top;spacingTop=5;dashed=1;dashPattern=5 5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="20" width="1560" height="830" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-rg" value="Hub Resource Group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontStyle=1;fontSize=13;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="60" width="740" height="770" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-vnet" value="Hub VNet  10.0.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontStyle=1;fontSize=11;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="100" width="700" height="490" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-apim" value="snet-apim  10.0.1.0/24&#xa;(delegated: Microsoft.Web/serverFarms)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="140" width="310" height="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="apim" value="API Management&#xa;(StandardV2)&#xa;&#xa;VNet Integration (outbound)&#xa;&#xa;APIs:&#xa;  /openai/*  (model gateway)&#xa;  /chat/*  (chat frontend)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;spacingTop=2;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="180" width="270" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-pe-hub" value="snet-pe  10.0.2.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="350" width="310" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-pe" value="Private Endpoints&#xa;• AI Services&#xa;• Storage&#xa;• AI Search&#xa;• Cosmos DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="380" width="180" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-agent-hub" value="snet-agent  10.0.3.0/24&#xa;(Foundry Agent Service)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=middle;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="500" width="310" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-foundry" value="Hub AI Foundry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontStyle=1;fontSize=12;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="100" width="340" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-ais" value="AI Services Account&#xa;└─ gpt-4o deployment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00A36C;strokeColor=#007A4D;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="140" width="200" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-proj" value="Foundry Project&#xa;└─ Capability Host" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B8D4B8;strokeColor=#82B366;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="200" width="200" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-backing" value="Backing Resources:&#xa;• Storage Account&#xa;• AI Search&#xa;• Cosmos DB (data-plane RBAC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="255" width="200" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="hub-conn" value="Connections:  storage, search, cosmos, App Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="330" width="300" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="observability" value="Observability&#xa;• Log Analytics Workspace&#xa;• Application Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="400" width="220" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="dns-zones" value="Private DNS Zones (hub-hosted)&#xa;• cognitiveservices  • openai  • ai services&#xa;• blob storage  • search  • cosmos db&#xa;• container apps&#xa;(linked to both hub &amp; spoke VNets)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=0;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="485" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-rg" value="Spoke Resource Group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontStyle=1;fontSize=13;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="810" y="60" width="750" height="780" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-vnet" value="Spoke VNet  10.1.0.0/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontStyle=1;fontSize=11;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="830" y="100" width="710" height="490" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-ca" value="snet-container-apps  10.1.1.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="850" y="140" width="330" height="250" as="geometry"/>
+                </mxCell>
+                <mxCell id="cae" value="Container Apps Environment&#xa;(Consumption)&#xa;publicNetworkAccess = Disabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4DB8FF;strokeColor=#0078D4;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="870" y="180" width="290" height="185" as="geometry"/>
+                </mxCell>
+                <mxCell id="chat-agent" value="Chat Agent (FastAPI)&#xa;Port 8000&#xa;&#xa;GET /api/models&#xa;POST /api/chat&#xa;POST /api/agent/chat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050EF;strokeColor=#003087;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="890" y="215" width="135" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="auth-sidecar" value="Auth Sidecar&#xa;(entra-sdk)&#xa;Port 8080&#xa;&#xa;Token exchange&#xa;MI→FIC→Agent ID" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9575CD;strokeColor=#7E57C2;fontColor=#FFFFFF;fontSize=8;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                    <mxGeometry x="1035" y="215" width="110" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="ca-to-sidecar" value="" style="endArrow=blockThin;startArrow=blockThin;endFill=1;startFill=1;html=1;strokeColor=#7E57C2;strokeWidth=1;" edge="1" parent="1" source="chat-agent" target="auth-sidecar">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ca-to-sidecar-label" value="localhost" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=7;fontColor=#7E57C2;fontStyle=2;" connectable="0" vertex="1" parent="ca-to-sidecar">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ca-mi" value="System-Assigned Managed Identity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#5C6BC0;fontSize=8;fontStyle=2;verticalAlign=middle;" vertex="1" parent="1">
+                    <mxGeometry x="890" y="305" width="255" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="cae-pe" value="Private Endpoint&#xa;(CAE wildcard DNS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="870" y="385" width="150" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-pe-spoke" value="snet-pe  10.1.2.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=top;spacingTop=3;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="850" y="410" width="330" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-pe" value="Private Endpoints&#xa;• AI Services&#xa;• Storage&#xa;• AI Search&#xa;• Cosmos DB&#xa;• ACR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6E6E6;strokeColor=#999999;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="870" y="440" width="170" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="snet-agent-spoke" value="snet-agent  10.1.3.0/24&#xa;(Foundry Agent Service)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;verticalAlign=middle;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="850" y="555" width="330" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-foundry" value="Spoke AI Foundry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontStyle=1;fontSize=12;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
+                    <mxGeometry x="1210" y="100" width="330" height="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-ais" value="AI Services Account&#xa;(no model deployments)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00A36C;strokeColor=#007A4D;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1230" y="140" width="200" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-proj" value="Foundry Project&#xa;└─ Capability Host" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B8D4B8;strokeColor=#82B366;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1230" y="195" width="200" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-conn" value="Connections:&#xa;• storage, search, cosmos&#xa;• App Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="1230" y="250" width="200" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="gw-conn" value="apim-gateway (ApiMgmt)&#xa;→ APIM /openai endpoint&#xa;Dynamic model discovery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1230" y="310" width="200" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="acr" value="Azure Container Registry&#xa;(ACR Tasks)&#xa;chat-agent:v{timestamp}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;fontSize=10;verticalAlign=middle;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="1210" y="440" width="240" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-storage" value="Spoke Storage Account&#xa;(agent-files container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;fontSize=9;verticalAlign=middle;arcSize=8;" vertex="1" parent="1">
+                    <mxGeometry x="1210" y="520" width="240" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="peering" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;startFill=1;endFill=1;width=8;endSize=4;startSize=4;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="760" y="350" as="sourcePoint"/>
+                        <mxPoint x="830" y="350" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="peering-label" value="VNet Peering&#xa;(bidirectional)" style="text;html=1;align=center;verticalAlign=middle;fontSize=9;fontStyle=2;fontColor=#9673A6;" parent="1" vertex="1">
+                    <mxGeometry x="756" y="365" width="100" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="apim-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#00A36C;strokeWidth=2;dashed=1;" parent="1" source="apim" target="hub-ais" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="apim-to-hub-label" value="/openai/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#00A36C;fontStyle=2;" parent="apim-to-hub" vertex="1" connectable="0">
+                    <mxGeometry x="-0.2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="apim-to-ca" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#0050EF;strokeWidth=2;dashed=1;" parent="1" source="apim" target="chat-agent" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="apim-to-ca-label" value="/chat/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#0050EF;fontStyle=2;" parent="apim-to-ca" vertex="1" connectable="0">
+                    <mxGeometry x="-0.2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ca-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=2;curved=1;" parent="1" source="chat-agent" target="apim" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="800" y="230"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ca-to-apim-label" value="OpenAI SDK&#xa;/openai/*" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" parent="ca-to-apim" vertex="1" connectable="0">
+                    <mxGeometry x="-0.3" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ca-to-spoke-foundry" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#82B366;strokeWidth=2;" parent="1" source="chat-agent" target="spoke-proj" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="gw-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#B85450;strokeWidth=2;dashed=1;dashPattern=8 4;curved=1;" parent="1" source="gw-conn" target="apim" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1100" y="600"/>
+                            <mxPoint x="500" y="600"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="gw-to-apim-label" value="apim-gateway → /openai/*&#xa;(dynamic model discovery)" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#B85450;fontStyle=2;" parent="gw-to-apim" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="acr-to-ca" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" parent="1" source="acr" target="cae" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="acr-to-ca-label" value="image pull" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" parent="acr-to-ca" vertex="1" connectable="0">
+                    <mxGeometry x="-0.2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="user" value="User / Client" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=10;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="-70" y="205" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="user-to-apim" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#0078D4;strokeWidth=2;" parent="1" source="user" target="apim" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="user-to-apim-label" value="HTTPS" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=9;fontColor=#0078D4;fontStyle=1;" parent="user-to-apim" vertex="1" connectable="0">
+                    <mxGeometry x="-0.2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cicd" value="CI/CD:  azd provision → postprovision.sh → az acr build → az containerapp update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#999999;fontSize=10;fontStyle=2;verticalAlign=middle;align=center;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="830" y="620" width="500" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="obs-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" parent="1" source="observability" target="hub-conn" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="obs-to-spoke" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;curved=1;" parent="1" source="observability" target="spoke-conn" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="790" y="430"/>
+                            <mxPoint x="790" y="275"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="obs-to-spoke-label" value="App Insights" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#D79B00;fontStyle=2;" parent="obs-to-spoke" vertex="1" connectable="0">
+                    <mxGeometry x="-0.3" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dns-to-hub" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;" parent="1" source="dns-zones" target="hub-vnet" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="dns-to-spoke" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#D79B00;strokeWidth=1;dashed=1;curved=1;" parent="1" source="dns-zones" target="spoke-vnet" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="790" y="520"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="tbl-hdr" value="&lt;table style=&#39;border-collapse:collapse;font-size:10px;width:100%&#39;&gt;&lt;tr style=&#39;background:#DAE8FC;font-weight:bold&#39;&gt;&lt;td style=&#39;border:1px solid #999;padding:4px;width:140px&#39;&gt;Component&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:4px;width:250px&#39;&gt;Hub&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:4px;width:250px&#39;&gt;Spoke&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;VNet&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;10.0.0.0/16&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;10.1.0.0/16&lt;/td&gt;&lt;/tr&gt;&lt;tr style=&#39;background:#F5F5F5&#39;&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Subnets&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;snet-apim, snet-pe, snet-agent&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;snet-container-apps, snet-pe, snet-agent&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;AI Foundry&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;AI Services + Project + gpt-4o&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;AI Services + Project (no models)&lt;/td&gt;&lt;/tr&gt;&lt;tr style=&#39;background:#F5F5F5&#39;&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;APIM&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;StandardV2, VNet integrated&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;—&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Container Apps&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;—&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;CAE + Chat Agent (private, PE only)&lt;/td&gt;&lt;/tr&gt;&lt;tr style=&#39;background:#F5F5F5&#39;&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;ACR&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;—&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Container Registry (ACR Tasks)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Observability&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Log Analytics + App Insights&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;(uses hub workspace)&lt;/td&gt;&lt;/tr&gt;&lt;tr style=&#39;background:#F5F5F5&#39;&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Private DNS&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;7 zones (linked to both VNets)&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;—&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Agent Service&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;—&lt;/td&gt;&lt;td style=&#39;border:1px solid #999;padding:3px&#39;&gt;Capability Host + gateway → APIM&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" style="text;html=1;overflow=fill;spacingLeft=2;spacingRight=2;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="605" width="680" height="205" as="geometry"/>
+                </mxCell>
+                <mxCell id="entra-section" value="Microsoft Entra ID — Agent Identity (Optional)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#5C6BC0;fontStyle=1;fontSize=13;verticalAlign=top;spacingTop=5;dashed=1;dashPattern=5 5;arcSize=6;" vertex="1" parent="1">
+                    <mxGeometry x="26" y="890" width="1560" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="token-flow" value="Token Flow:   Sidecar (uses MI)  →  FIC validates MI  →  Blueprint issues token  →  Agent Identity  →  Resource Token" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=6;fontColor=#5C6BC0;" vertex="1" parent="1">
+                    <mxGeometry x="126" y="925" width="900" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="fic" value="❶ Federated Identity&#xa;Credential (FIC)&#xa;Registered on Blueprint&#xa;Trusts Container App MI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7986CB;strokeColor=#5C6BC0;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                    <mxGeometry x="66" y="970" width="220" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="blueprint" value="❷ Blueprint&#xa;(AgentIdentityBlueprint)&#xa;App Registration + SP&#xa;Issues token via FIC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5C6BC0;strokeColor=#3949AB;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                    <mxGeometry x="326" y="970" width="220" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="agent-identity" value="❸ Agent Identity&#xa;(Entra Service Principal)&#xa;RBAC: Storage Blob Contributor,&#xa;Cognitive Services User" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7E57C2;strokeColor=#5E35B1;fontColor=#FFFFFF;fontSize=9;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                    <mxGeometry x="586" y="970" width="230" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="agent-id-usecases" value="Use Cases:&#xa;• Autonomous — own security context, own RBAC roles&#xa;• On-Behalf-Of (Digital Colleague) — delegated permissions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#AAAAAA;fontSize=9;verticalAlign=middle;align=left;spacingLeft=10;arcSize=8;" vertex="1" parent="1">
+                    <mxGeometry x="856" y="970" width="340" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="setup-script" value="setup_agent_identity.sh  (Graph API)&#xa;Creates: Blueprint → SP → FIC → Agent Identity → RBAC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#999999;fontSize=9;fontStyle=2;verticalAlign=middle;align=center;arcSize=8;" vertex="1" parent="1">
+                    <mxGeometry x="1226" y="970" width="330" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="spoke-storage-note" value="When enabled: Spoke Storage (agent-files) + list_files LangChain tool&#xa;Auth sidecar acquires Storage token → agent lists blobs via Azure REST API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#999999;fontSize=9;fontStyle=2;verticalAlign=middle;align=center;arcSize=8;" vertex="1" parent="1">
+                    <mxGeometry x="66" y="1050" width="540" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="fic-to-bp" value="validates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#5C6BC0;strokeWidth=2;" edge="1" parent="1" source="fic" target="blueprint">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bp-to-ai" value="impersonates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#7E57C2;strokeWidth=2;" edge="1" parent="1" source="blueprint" target="agent-identity">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="sidecar-to-fic" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#7E57C2;strokeWidth=2;dashed=1;curved=1;" edge="1" parent="1" source="auth-sidecar" target="fic">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1090" y="900"/>
+                            <mxPoint x="400" y="1050"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="sidecar-to-fic-label" value="Sidecar presents MI credential&#xa;FIC validates → Blueprint token&#xa;→ Agent Identity token" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#7E57C2;fontStyle=2;" connectable="0" vertex="1" parent="sidecar-to-fic">
+                    <mxGeometry x="-0.3" relative="1" as="geometry">
+                        <mxPoint x="-180" y="-126" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ai-to-storage" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#7E57C2;strokeWidth=1;dashed=1;curved=1;" edge="1" parent="1" source="agent-identity" target="spoke-storage">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1400" y="1100"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ai-to-storage-label" value="RBAC: Storage&#xa;Blob Contributor" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#7E57C2;fontStyle=2;" connectable="0" vertex="1" parent="ai-to-storage">
+                    <mxGeometry x="-0.2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
 </mxfile>
