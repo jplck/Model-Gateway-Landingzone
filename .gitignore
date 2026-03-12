@@ -3,4 +3,5 @@ packages-microsoft-prod.deb
 # Environment files with secrets
 .env
 .env.*
+!.env.sample
 *.env
