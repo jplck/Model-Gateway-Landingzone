@@ -345,6 +345,54 @@ To add load balancing across multiple Foundry instances, deploy another Foundry 
 2. Register the new endpoint as an additional APIM backend
 3. Update `openai-api-policy.xml` to use a backend pool with round-robin routing
 
+## Routing to Non-Foundry Model Backends
+
+The APIM gateway is not limited to Azure AI Foundry — it can route to **any OpenAI-compatible backend**. Since the gateway exposes a standard `/openai/*` API surface, you can add additional backends behind the same endpoint:
+
+- **Azure OpenAI Service** (standalone, without Foundry)
+- **Self-hosted models** — vLLM, Ollama, TGI, or any container exposing an OpenAI-compatible API
+- **Third-party providers** — OpenAI direct, Anthropic (via an adapter), or any API-compatible proxy
+- **Other Azure AI Foundry instances** — in different regions or subscriptions for geo-routing
+
+### How to Add a Custom Backend
+
+1. **Register a new APIM backend** pointing to your model endpoint:
+
+   ```bicep
+   resource customBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+     name: 'custom-model-backend'
+     parent: apim
+     properties: {
+       url: 'https://my-vllm-server.internal:8000'
+       protocol: 'http'
+     }
+   }
+   ```
+
+2. **Update the APIM policy** (`openai-api-policy.xml`) to route specific deployments to the new backend — for example, route by deployment name:
+
+   ```xml
+   <choose>
+     <when condition="@(context.Request.MatchedParameters["deployment-id"] == "llama-3")">
+       <set-backend-service backend-id="custom-model-backend" />
+     </when>
+     <otherwise>
+       <set-backend-service backend-id="foundry-backend" />
+     </otherwise>
+   </choose>
+   ```
+
+3. **Adjust authentication** per backend — the existing policy uses managed identity for Foundry, but custom backends may need API keys, mTLS, or no auth at all:
+
+   ```xml
+   <!-- For backends that need an API key instead of MI auth -->
+   <set-header name="Authorization" exists-action="override">
+     <value>Bearer {{custom-backend-api-key}}</value>
+   </set-header>
+   ```
+
+Spoke consumers don't need to change anything — they continue calling APIM `/openai/*` with their subscription key, and APIM routes to the correct backend transparently.
+
 ## Security Hardening (Phase 9)
 
 For production-like security:
