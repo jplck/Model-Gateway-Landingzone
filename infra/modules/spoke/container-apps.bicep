@@ -111,7 +111,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: acrName
   location: location
   tags: tags
-  sku: { name: 'Basic' }
+  sku: { name: 'Standard' }
   properties: {
     adminUserEnabled: false
   }
@@ -268,6 +268,7 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
               enableAuthSidecar && enableA365Observability
                 ? [
                     { name: 'ENABLE_A365_OBSERVABILITY_EXPORTER', value: 'true' }
+                    { name: 'ENABLE_A365_OBSERVABILITY', value: 'true' }
                   ]
                 : []
             )

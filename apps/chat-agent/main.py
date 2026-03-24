@@ -11,11 +11,13 @@ Routes:
   GET  /health         → Health check
 """
 
+import json
 import os
 import logging
+import uuid
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -29,6 +31,7 @@ from config import (
     AGENT_IDENTITY_APP_ID,
     STORAGE_ACCOUNT_URL,
     STORAGE_CONTAINER_NAME,
+    AZURE_TENANT_ID,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -44,8 +47,24 @@ if AGENTID_SIDECAR_URL and AGENT_IDENTITY_APP_ID:
     try:
         import requests as _requests
         from microsoft_agents_a365.observability.core import configure as a365_configure
-        from microsoft_agents_a365.observability.core.exporters.agent365_exporter_options import Agent365ExporterOptions
-        from microsoft_agents_a365.observability.extensions.langchain import LangChainTracerInstrumentor
+        from microsoft_agents_a365.observability.core import (
+            AgentDetails,
+            BaggageBuilder,
+            InvokeAgentScope,
+            InvokeAgentDetails,
+            InferenceScope,
+            InferenceCallDetails,
+            InferenceOperationType,
+            ExecuteToolScope,
+            ToolCallDetails,
+            ToolType,
+            TenantDetails,
+            ExecutionType,
+            Request as A365Request,
+        )
+        from microsoft_agents_a365.observability.extensions.langchain import CustomLangChainInstrumentor
+
+        _a365_available = True
 
         def _a365_token_resolver(agent_id: str, tenant_id: str) -> str | None:
             """Resolve an AgentToken from the auth sidecar for A365 telemetry export."""
@@ -69,18 +88,20 @@ if AGENTID_SIDECAR_URL and AGENT_IDENTITY_APP_ID:
         a365_configure(
             service_name="chat-agent",
             service_namespace="aigw-landing-zone",
-            exporter_options=Agent365ExporterOptions(
-                token_resolver=_a365_token_resolver,
-                cluster_category="prod",
-            ),
+            token_resolver=_a365_token_resolver,
+            cluster_category="prod",
         )
 
-        LangChainTracerInstrumentor().instrument()
+        CustomLangChainInstrumentor()
         logger.info("A365 observability configured (agent=%s)", AGENT_IDENTITY_APP_ID)
-    except ImportError:
-        logger.info("A365 observability packages not installed — skipping")
+    except ImportError as e:
+        _a365_available = False
+        logger.info("A365 observability packages not installed — skipping: %s", e)
     except Exception as e:
+        _a365_available = False
         logger.warning("A365 observability setup failed: %s", e)
+else:
+    _a365_available = False
 
 # ---------------------------------------------------------------------------
 # Request / Response models
@@ -229,7 +250,7 @@ async def list_models():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, http_request: FastAPIRequest):
     """LangGraph ReAct agent → APIM → Hub Foundry, with automatic tool calling."""
     from inference import get_agent, to_langchain_messages
 
@@ -238,8 +259,121 @@ async def chat(req: ChatRequest):
         raise HTTPException(503, "LLM not configured. Set APIM_GATEWAY_URL and APIM_API_KEY.")
 
     messages = to_langchain_messages(req.messages)
+    user_input = messages[-1].content if messages else ""
     tool_calls_made: list[ToolCallInfo] = []
+    deployment = req.model or DEPLOYMENT_NAME
 
+    if not _a365_available:
+        return await _run_chat_agent(agent, messages, tool_calls_made)
+
+    # Build A365 observability context
+    correlation_id = str(uuid.uuid4())
+    tenant_id = AZURE_TENANT_ID or "unknown"
+    agent_id = AGENT_IDENTITY_APP_ID or "chat-agent"
+
+    tenant_details = TenantDetails(tenant_id=tenant_id)
+    agent_details = AgentDetails(
+        agent_id=agent_id,
+        agent_name="chat-agent",
+        agent_description="AI Gateway Landing Zone LangGraph Chat Agent",
+        tenant_id=tenant_id,
+    )
+    invoke_details = InvokeAgentDetails(
+        details=agent_details,
+        session_id=correlation_id,
+    )
+    a365_request = A365Request(
+        content=user_input,
+        execution_type=ExecutionType.HUMAN_TO_AGENT,
+    )
+
+    try:
+        with BaggageBuilder() \
+            .tenant_id(tenant_id) \
+            .agent_id(agent_id) \
+            .correlation_id(correlation_id) \
+            .build():
+
+            with InvokeAgentScope.start(
+                invoke_agent_details=invoke_details,
+                tenant_details=tenant_details,
+                request=a365_request,
+            ) as invoke_scope:
+                invoke_scope.record_input_messages([user_input])
+
+                # Run the agent inside an InferenceScope
+                inference_details = InferenceCallDetails(
+                    operationName=InferenceOperationType.CHAT,
+                    model=deployment,
+                    providerName="Azure OpenAI via APIM",
+                )
+
+                with InferenceScope.start(
+                    details=inference_details,
+                    agent_details=agent_details,
+                    tenant_details=tenant_details,
+                    request=a365_request,
+                ) as inference_scope:
+                    result = await agent.ainvoke({"messages": messages})
+
+                    reply = ""
+                    for msg in result["messages"]:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                tool_calls_made.append(ToolCallInfo(
+                                    name=tc["name"],
+                                    arguments=tc.get("args", {}),
+                                    result="",
+                                ))
+                        if msg.type == "tool" and tool_calls_made:
+                            for tci in tool_calls_made:
+                                if tci.name == msg.name and tci.result == "":
+                                    tci.result = msg.content
+                                    break
+                        if msg.type == "ai" and msg.content:
+                            reply = msg.content
+
+                    # Record token usage if available from the last AI message
+                    last_ai = next(
+                        (m for m in reversed(result["messages"]) if m.type == "ai"),
+                        None,
+                    )
+                    if last_ai and hasattr(last_ai, "usage_metadata") and last_ai.usage_metadata:
+                        usage = last_ai.usage_metadata
+                        input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
+                        output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
+                        if input_tokens:
+                            inference_scope.record_input_tokens(input_tokens)
+                        if output_tokens:
+                            inference_scope.record_output_tokens(output_tokens)
+
+                    inference_scope.record_finish_reasons(["stop"])
+                    inference_scope.record_output_messages([reply])
+
+                # Record tool calls as ExecuteToolScopes
+                for tc in tool_calls_made:
+                    tool_details = ToolCallDetails(
+                        tool_name=tc.name,
+                        arguments=json.dumps(tc.arguments),
+                        tool_type=ToolType.FUNCTION.value,
+                    )
+                    with ExecuteToolScope.start(
+                        details=tool_details,
+                        agent_details=agent_details,
+                        tenant_details=tenant_details,
+                    ) as tool_scope:
+                        tool_scope.record_response(tc.result)
+
+                invoke_scope.record_output_messages([reply])
+
+        return ChatResponse(reply=reply, tool_calls=tool_calls_made)
+    except Exception as e:
+        logger.exception("LangGraph agent call failed")
+        raise HTTPException(502, f"LLM error: {e}")
+
+
+async def _run_chat_agent(agent, messages, tool_calls_made):
+    """Run LangGraph agent without A365 observability scopes (fallback)."""
     try:
         result = await agent.ainvoke({"messages": messages})
 

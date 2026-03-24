@@ -1,11 +1,11 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 httpx>=0.27.0,<1.0.0
-pydantic==2.9.0
+pydantic>=2.9.0
 openai>=2.8.0
 langchain-openai>=0.3.0
 langgraph>=0.3.0
-microsoft-agents-a365-observability-core
-microsoft-agents-a365-observability-extensions-langchain
+microsoft-agents-a365-observability-core==0.1.0
+microsoft-agents-a365-observability-extensions-langchain==0.1.0
 azure-ai-projects>=2.0.0b4
 azure-identity>=1.19.0

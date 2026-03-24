@@ -658,15 +658,22 @@ When Agent Identity is enabled, a spoke storage account with a blob container (`
 
 ## A365 Observability (Optional)
 
-The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that auto-instrument LangChain/LangGraph executions. When enabled, the following events are traced via OpenTelemetry:
+The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that auto-instrument LangChain/LangGraph executions. The `/api/chat` route wraps each request in explicit A365 observability scopes:
 
-| LangChain Event | Agent365 Scope |
+| Scope | Purpose |
 |---|---|
-| Chain start/end | `InvokeAgentScope` |
-| LLM call start/end | `InferenceScope` (with token counts) |
-| Tool call start/end | `ExecuteToolScope` |
+| `InvokeAgentScope` | Wraps the full agent invocation, records input/output messages |
+| `InferenceScope` | Wraps LLM calls with model name, token counts, finish reasons |
+| `ExecuteToolScope` | Wraps each tool execution with name, arguments, and result |
 
-Telemetry is exported to the Agent365 backend (`agent365.svc.cloud.microsoft`) using a token acquired from the sidecar's `AgentToken` downstream API. The `ENABLE_A365_OBSERVABILITY_EXPORTER=true` env var activates the exporter.
+Two environment variables control the behaviour:
+
+| Variable | Purpose |
+|---|---|
+| `ENABLE_A365_OBSERVABILITY=true` | Enables scope-level span creation (required for traces to appear) |
+| `ENABLE_A365_OBSERVABILITY_EXPORTER=true` | Routes spans to the Agent365 backend; when not set, falls back to `ConsoleSpanExporter` (stdout) |
+
+Telemetry is exported to the Agent365 backend (`agent365.svc.cloud.microsoft`) using a token acquired from the sidecar's `AgentToken` downstream API.
 
 The A365 observability packages (`microsoft-agents-a365-observability-core` and `microsoft-agents-a365-observability-extensions-langchain`) are included in the chat agent's requirements. They auto-configure at startup when the sidecar is available; if not installed, the app works normally without observability.
 
