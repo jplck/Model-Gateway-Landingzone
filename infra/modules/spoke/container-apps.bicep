@@ -260,6 +260,7 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                 ? [
                     { name: 'AGENTID_SIDECAR_URL', value: 'http://localhost:8080' }
                     { name: 'AGENT_IDENTITY_APP_ID', value: agentIdentityAppId }
+                    { name: 'BLUEPRINT_APP_ID', value: blueprintAppId }
                     { name: 'AZURE_TENANT_ID', value: entraIdTenantId }
                     { name: 'STORAGE_ACCOUNT_URL', value: spokeStorage.properties.primaryEndpoints.blob }
                     { name: 'STORAGE_CONTAINER_NAME', value: storageContainerName }
@@ -308,6 +309,10 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                     name: 'DownstreamApis__CognitiveServices__RequestAppToken'
                     value: 'true'
                   }
+                  {
+                    name: 'DownstreamApis__CognitiveServices__AcquireTokenOptions__FmiPath'
+                    value: agentIdentityAppId
+                  }
                   // --- Downstream API: Azure Storage (blob access) ---
                   {
                     name: 'DownstreamApis__Storage__BaseUrl'
@@ -320,6 +325,10 @@ resource sampleApp 'Microsoft.App/containerApps@2024-03-01' = {
                   {
                     name: 'DownstreamApis__Storage__RequestAppToken'
                     value: 'true'
+                  }
+                  {
+                    name: 'DownstreamApis__Storage__AcquireTokenOptions__FmiPath'
+                    value: agentIdentityAppId
                   }
                   // --- Downstream API: Agent Token (FIC exchange token for introspection) ---
                   {

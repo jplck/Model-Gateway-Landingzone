@@ -17,7 +17,7 @@ import logging
 import uuid
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -150,8 +150,6 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 @app.get("/")
 async def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
-
-
 @app.get("/health")
 async def health():
     from inference import llm
@@ -165,6 +163,8 @@ async def health():
         "project_endpoint": AI_PROJECT_ENDPOINT,
         "sidecar_url": AGENTID_SIDECAR_URL or None,
     }
+
+
 
 
 @app.get("/api/auth/test")
@@ -250,7 +250,7 @@ async def list_models():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, http_request: FastAPIRequest):
+async def chat(req: ChatRequest):
     """LangGraph ReAct agent → APIM → Hub Foundry, with automatic tool calling."""
     from inference import get_agent, to_langchain_messages
 
@@ -269,11 +269,11 @@ async def chat(req: ChatRequest, http_request: FastAPIRequest):
     # Build A365 observability context
     correlation_id = str(uuid.uuid4())
     tenant_id = AZURE_TENANT_ID or "unknown"
-    agent_id = AGENT_IDENTITY_APP_ID or "chat-agent"
+    obs_agent_id = AGENT_IDENTITY_APP_ID or "chat-agent"
 
     tenant_details = TenantDetails(tenant_id=tenant_id)
     agent_details = AgentDetails(
-        agent_id=agent_id,
+        agent_id=obs_agent_id,
         agent_name="chat-agent",
         agent_description="AI Gateway Landing Zone LangGraph Chat Agent",
         tenant_id=tenant_id,
@@ -290,7 +290,7 @@ async def chat(req: ChatRequest, http_request: FastAPIRequest):
     try:
         with BaggageBuilder() \
             .tenant_id(tenant_id) \
-            .agent_id(agent_id) \
+            .agent_id(obs_agent_id) \
             .correlation_id(correlation_id) \
             .build():
 
@@ -413,6 +413,4 @@ def agent_chat_route(req: AgentChatRequest):
     except Exception as e:
         logger.exception("Agent call failed")
         raise HTTPException(502, f"Agent error: {e}")
-
-
 

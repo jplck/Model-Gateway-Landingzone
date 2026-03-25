@@ -37,8 +37,9 @@ SPONSOR_OBJECT_ID="${SPONSOR_OBJECT_ID:-}"
 MGMT_CLIENT_ID="${AGENT_MGMT_CLIENT_ID:-${MANAGEMENT_APP_CLIENT_ID:-}}"
 MGMT_CLIENT_SECRET="${AGENT_MGMT_CLIENT_SECRET:-${MANAGEMENT_APP_CLIENT_SECRET:-}}"
 
-BLUEPRINT_NAME="${BLUEPRINT_DISPLAY_NAME:-AI Gateway Agent Blueprint}"
-AGENT_NAME="${AGENT_DISPLAY_NAME:-AI Gateway Chat Agent}"
+DEFAULT_BLUEPRINT_NAME="${BLUEPRINT_DISPLAY_NAME:-AI Gateway Agent Blueprint}"
+DEFAULT_AGENT_NAME="${AGENT_DISPLAY_NAME:-AI Gateway Chat Agent}"
+DEFAULT_BLUEPRINT_APP_ID="${BLUEPRINT_APP_ID:-}"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Entra Agent Identity Setup"
@@ -59,6 +60,27 @@ if [[ -z "$MGMT_CLIENT_ID" || -z "$MGMT_CLIENT_SECRET" ]]; then
   echo "a dedicated management app with client credentials for Graph calls."
   exit 1
 fi
+
+# --- Interactive prompts ---
+echo ""
+if [[ -n "$DEFAULT_BLUEPRINT_APP_ID" ]]; then
+  read -r -p "  Blueprint App ID [${DEFAULT_BLUEPRINT_APP_ID}]: " INPUT_BLUEPRINT_APP_ID
+else
+  read -r -p "  Blueprint App ID (leave empty to create new): " INPUT_BLUEPRINT_APP_ID
+fi
+BLUEPRINT_APP_ID="${INPUT_BLUEPRINT_APP_ID:-$DEFAULT_BLUEPRINT_APP_ID}"
+
+read -r -p "  Blueprint display name [${DEFAULT_BLUEPRINT_NAME}]: " INPUT_BLUEPRINT_NAME
+BLUEPRINT_NAME="${INPUT_BLUEPRINT_NAME:-$DEFAULT_BLUEPRINT_NAME}"
+
+read -r -p "  Agent Identity display name [${DEFAULT_AGENT_NAME}]: " INPUT_AGENT_NAME
+AGENT_NAME="${INPUT_AGENT_NAME:-$DEFAULT_AGENT_NAME}"
+
+echo ""
+echo "  → Blueprint App ID:  ${BLUEPRINT_APP_ID:-(will be created)}"
+echo "  → Blueprint name:    ${BLUEPRINT_NAME}"
+echo "  → Agent name:        ${AGENT_NAME}"
+echo ""
 
 # --- Determine sponsor ---
 if [[ -z "$SPONSOR_OBJECT_ID" ]]; then
@@ -114,9 +136,31 @@ graph_api() {
 # =========================================================================
 echo "1️⃣  Agent Identity Blueprint '${BLUEPRINT_NAME}'..."
 
-# Check for existing Blueprint
-EXISTING_BP=$(graph_api GET "https://graph.microsoft.com/beta/applications" \
-  | python3 -c "
+if [[ -n "$BLUEPRINT_APP_ID" ]]; then
+  # Look up existing blueprint by App ID
+  BLUEPRINT_OBJ_ID=$(graph_api GET "https://graph.microsoft.com/beta/applications" \
+    | python3 -c "
+import json,sys
+apps = json.load(sys.stdin).get('value',[])
+for a in apps:
+    if a.get('appId') == '$BLUEPRINT_APP_ID':
+        print(a['id'])
+        break
+" 2>/dev/null || true)
+
+  if [[ -n "$BLUEPRINT_OBJ_ID" ]]; then
+    echo "  ✓ Found Blueprint by App ID"
+    echo "    Object ID: ${BLUEPRINT_OBJ_ID}"
+    echo "    App ID:    ${BLUEPRINT_APP_ID}"
+  else
+    echo "❌ Blueprint with App ID '${BLUEPRINT_APP_ID}' not found."
+    echo "   Check the ID or leave empty to create a new one."
+    exit 1
+  fi
+else
+  # Search by display name
+  EXISTING_BP=$(graph_api GET "https://graph.microsoft.com/beta/applications" \
+    | python3 -c "
 import json,sys
 apps = json.load(sys.stdin).get('value',[])
 for a in apps:
@@ -125,31 +169,32 @@ for a in apps:
         break
 " 2>/dev/null || true)
 
-if [[ -n "$EXISTING_BP" ]]; then
-  BLUEPRINT_OBJ_ID=$(echo "$EXISTING_BP" | awk '{print $1}')
-  BLUEPRINT_APP_ID=$(echo "$EXISTING_BP" | awk '{print $2}')
-  echo "  ✓ Found existing Blueprint"
-  echo "    Object ID: ${BLUEPRINT_OBJ_ID}"
-  echo "    App ID:    ${BLUEPRINT_APP_ID}"
-else
-  BLUEPRINT_RESP=$(graph_api POST "https://graph.microsoft.com/beta/applications/" "{
-      \"@odata.type\": \"Microsoft.Graph.AgentIdentityBlueprint\",
-      \"displayName\": \"${BLUEPRINT_NAME}\",
-      \"sponsors@odata.bind\": [\"${SPONSOR_URI}\"]
-    }")
+  if [[ -n "$EXISTING_BP" ]]; then
+    BLUEPRINT_OBJ_ID=$(echo "$EXISTING_BP" | awk '{print $1}')
+    BLUEPRINT_APP_ID=$(echo "$EXISTING_BP" | awk '{print $2}')
+    echo "  ✓ Found existing Blueprint by name"
+    echo "    Object ID: ${BLUEPRINT_OBJ_ID}"
+    echo "    App ID:    ${BLUEPRINT_APP_ID}"
+  else
+    BLUEPRINT_RESP=$(graph_api POST "https://graph.microsoft.com/beta/applications/" "{
+        \"@odata.type\": \"Microsoft.Graph.AgentIdentityBlueprint\",
+        \"displayName\": \"${BLUEPRINT_NAME}\",
+        \"sponsors@odata.bind\": [\"${SPONSOR_URI}\"]
+      }")
 
-  BLUEPRINT_OBJ_ID=$(echo "$BLUEPRINT_RESP" | json_val id)
-  BLUEPRINT_APP_ID=$(echo "$BLUEPRINT_RESP" | json_val appId)
+    BLUEPRINT_OBJ_ID=$(echo "$BLUEPRINT_RESP" | json_val id)
+    BLUEPRINT_APP_ID=$(echo "$BLUEPRINT_RESP" | json_val appId)
 
-  if [[ -z "$BLUEPRINT_APP_ID" ]]; then
-    echo "❌ Failed to create Blueprint:"
-    echo "$BLUEPRINT_RESP"
-    exit 1
+    if [[ -z "$BLUEPRINT_APP_ID" ]]; then
+      echo "❌ Failed to create Blueprint:"
+      echo "$BLUEPRINT_RESP"
+      exit 1
+    fi
+
+    echo "  ✓ Blueprint created"
+    echo "    Object ID: ${BLUEPRINT_OBJ_ID}"
+    echo "    App ID:    ${BLUEPRINT_APP_ID}"
   fi
-
-  echo "  ✓ Blueprint created"
-  echo "    Object ID: ${BLUEPRINT_OBJ_ID}"
-  echo "    App ID:    ${BLUEPRINT_APP_ID}"
 fi
 
 # =========================================================================

@@ -49,7 +49,6 @@
   .typing .bubble::after { content: '●●●'; animation: blink 1.2s infinite; }
   @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
 
-  /* Input area */
   .input-area { background: #fff; border-top: 1px solid #e0e0e0; padding: 16px 24px; }
   .input-row { max-width: 720px; margin: 0 auto; display: flex; gap: 12px; }
   #userInput { flex: 1; padding: 12px 16px; border: 1px solid #d0d5dd; border-radius: 12px; font-size: 14px; outline: none; resize: none; font-family: inherit; min-height: 44px; max-height: 120px; }
@@ -341,7 +340,6 @@ async function sendDirect(text) {
     addMessage('error', `Error ${res.status}: ${err}`);
   } else {
     const data = await res.json();
-    // Show tool calls if any were made
     if (data.tool_calls && data.tool_calls.length > 0) {
       data.tool_calls.forEach(tc => {
         addToolCall(tc.name, tc.arguments, tc.result);
@@ -432,6 +430,8 @@ userInput.addEventListener('input', () => {
 
 // ---- Init ----
 renderChat();
+
+// ---- Observability indicator ----
 </script>
 
 </body>
