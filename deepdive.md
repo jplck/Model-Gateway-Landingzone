@@ -6,14 +6,14 @@ This repository implements a **hub-spoke AI Gateway Landing Zone** on Azure. The
 
 The entire infrastructure is defined in Bicep, deployed via Azure Developer CLI (`azd`), and follows a phased approach where each phase can be deployed incrementally.
 
-The chat agent application offers **two modes** of AI interaction, with optional Entra Agent Identity and A365 observability:
+The chat agent application offers **two modes** of AI interaction, with Entra Agent Identity and A365 observability (preview):
 
 1. **LangGraph Agent** — LangGraph ReAct agent with tools → APIM → Hub Foundry (API key or Agent Identity auth)
 2. **Foundry Agent** — PromptAgent SDK → Agent Service → APIM Gateway → Hub Foundry
 
 Optional capabilities:
 - **Entra Agent Identity** — Gives the agent its own security identity via Blueprint + Agent Identity + FIC + auth sidecar
-- **A365 Observability** — Automatic tracing of LangChain/LangGraph executions via the Microsoft Agent 365 SDK
+- **A365 Observability (Preview)** — Automatic tracing of LangChain/LangGraph executions via the Microsoft Agent 365 SDK
 - **Spoke Storage** — Blob storage accessible via Agent Identity tokens, with a `list_files` tool for the LangGraph agent
 
 ```
@@ -656,26 +656,96 @@ When Agent Identity is enabled, a spoke storage account with a blob container (`
 
 ---
 
-## A365 Observability (Optional)
+## A365 Observability (Preview)
 
-The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that auto-instrument LangChain/LangGraph executions. The `/api/chat` route wraps each request in explicit A365 observability scopes:
+> **Preview:** A365 observability is currently in preview. APIs and telemetry schemas may change.
 
-| Scope | Purpose |
+The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that trace LangGraph agent executions end-to-end. The `/api/chat` route wraps each request in explicit A365 observability scopes, and `CustomLangChainInstrumentor` auto-instruments LangChain/LangGraph chains.
+
+### Startup Configuration
+
+A365 is configured at module load time in `main.py` when both `AGENTID_SIDECAR_URL` and `AGENT_IDENTITY_APP_ID` are set:
+
+```python
+a365_configure(
+    service_name="chat-agent",
+    service_namespace="aigw-landing-zone",
+    token_resolver=_a365_token_resolver,
+    cluster_category="prod",
+)
+
+CustomLangChainInstrumentor()
+```
+
+The `_a365_token_resolver` callback acquires an `AgentToken` from the auth sidecar at `{AGENTID_SIDECAR_URL}/AuthorizationHeaderUnauthenticated/AgentToken?AgentIdentity={id}` and strips the `Bearer ` prefix. This token authenticates telemetry export to the Agent365 backend.
+
+If the A365 packages aren't installed (e.g., auth sidecar not enabled), the import fails gracefully and `_a365_available` is set to `False`. The app works normally without observability.
+
+### Observability Scopes
+
+Each `/api/chat` request is wrapped in nested scopes:
+
+| Scope | Captured Data |
 |---|---|
-| `InvokeAgentScope` | Wraps the full agent invocation, records input/output messages |
-| `InferenceScope` | Wraps LLM calls with model name, token counts, finish reasons |
-| `ExecuteToolScope` | Wraps each tool execution with name, arguments, and result |
+| `BaggageBuilder` | Correlation context — tenant ID, agent ID, correlation ID (UUID per request) |
+| `InvokeAgentScope` | Full agent invocation — input/output messages, session ID |
+| `InferenceScope` | LLM calls — model name, provider (`Azure OpenAI via APIM`), input/output token counts, finish reasons |
+| `ExecuteToolScope` | Tool executions — tool name, arguments (JSON), result |
 
-Two environment variables control the behaviour:
+The scope nesting follows the execution flow:
+
+```
+BaggageBuilder (tenant_id, agent_id, correlation_id)
+  └── InvokeAgentScope (invoke_details, tenant_details, request)
+        ├── record_input_messages([user_input])
+        ├── InferenceScope (inference_details, agent_details, tenant_details)
+        │     ├── agent.ainvoke({messages}) — LangGraph execution
+        │     ├── record_input_tokens / record_output_tokens
+        │     ├── record_finish_reasons(["stop"])
+        │     └── record_output_messages([reply])
+        ├── ExecuteToolScope (per tool call)
+        │     └── record_response(result)
+        └── record_output_messages([reply])
+```
+
+Key data objects:
+
+| Object | Fields |
+|---|---|
+| `AgentDetails` | `agent_id`, `agent_name`, `agent_description`, `tenant_id` |
+| `TenantDetails` | `tenant_id` |
+| `InvokeAgentDetails` | `details` (AgentDetails), `session_id` (correlation UUID) |
+| `InferenceCallDetails` | `operationName` (CHAT), `model`, `providerName` |
+| `A365Request` | `content` (user input), `execution_type` (HUMAN_TO_AGENT) |
+| `ToolCallDetails` | `tool_name`, `arguments`, `tool_type` (FUNCTION) |
+
+Token usage is extracted from the last AI message's `usage_metadata` when available (`input_tokens`/`prompt_tokens` and `output_tokens`/`completion_tokens`).
+
+### Fallback Path
+
+When A365 is not available (`_a365_available = False`), the `/api/chat` route falls back to `_run_chat_agent()` — the same LangGraph execution without any observability scopes.
+
+### Environment Variables
+
+Two environment variables are set by the Bicep deployment (when `enableA365Observability=true`):
 
 | Variable | Purpose |
 |---|---|
 | `ENABLE_A365_OBSERVABILITY=true` | Enables scope-level span creation (required for traces to appear) |
-| `ENABLE_A365_OBSERVABILITY_EXPORTER=true` | Routes spans to the Agent365 backend; when not set, falls back to `ConsoleSpanExporter` (stdout) |
+| `ENABLE_A365_OBSERVABILITY_EXPORTER=true` | Routes spans to the Agent365 backend |
 
-Telemetry is exported to the Agent365 backend (`agent365.svc.cloud.microsoft`) using a token acquired from the sidecar's `AgentToken` downstream API.
+These are read internally by the A365 SDK. The Python code's outer guard (`if AGENTID_SIDECAR_URL and AGENT_IDENTITY_APP_ID`) controls whether `a365_configure()` is called at all.
 
-The A365 observability packages (`microsoft-agents-a365-observability-core` and `microsoft-agents-a365-observability-extensions-langchain`) are included in the chat agent's requirements. They auto-configure at startup when the sidecar is available; if not installed, the app works normally without observability.
+Telemetry is exported to the Agent365 backend using a token acquired from the sidecar's `AgentToken` downstream API.
+
+### Required Packages
+
+```
+microsoft-agents-a365-observability-core==0.1.0
+microsoft-agents-a365-observability-extensions-langchain==0.1.0
+```
+
+These are included in the chat agent's `requirements.txt` and import conditionally at startup.
 
 ---
 
@@ -705,7 +775,7 @@ APIM uses W3C trace correlation, so traces can be followed from browser → APIM
 | **Container App → Foundry** | `DefaultAzureCredential` (system-assigned managed identity). Azure AI Developer role on the spoke Foundry account. |
 | **Container App → ACR** | System-assigned managed identity with `AcrPull` role. No admin credentials. |
 | **Agent Identity → Resources** | (Optional) When Agent Identity is enabled, the Agent Identity SP has `Storage Blob Data Contributor` on spoke storage and `Cognitive Services User` on the Foundry account. Tokens are acquired via the auth sidecar — no credentials in app code. |
-| **A365 Telemetry Export** | (Optional) Agent365 backend authentication via AgentToken acquired from the sidecar. |
+| **A365 Telemetry Export** | (Preview) Agent365 backend authentication via AgentToken acquired from the sidecar. |
 | **Foundry → ACR** | Project-level managed identity with `AcrPull` role (for hosted agent image pull). |
 | **Foundry → APIM** | APIM gateway connection with subscription key (for agent model inference). |
 | **All hub PaaS services** | Private endpoints only. Storage, AI Search, Cosmos DB, AI Services all accessible only via PE. |
@@ -821,4 +891,4 @@ curl -s -X POST https://<apim-url>/chat/api/hosted/chat \
 
 11. **Entra Agent Identity for per-agent security** — Each agent gets its own Entra identity (Blueprint + Agent Identity + FIC) with dedicated RBAC roles. Supports both autonomous agents (own security context) and on-behalf-of agents (Digital Colleague pattern with delegated permissions). The auth sidecar centralizes token exchange in a separate container — the app code has zero auth logic.
 
-12. **A365 observability as an optional layer** — The Microsoft Agent 365 SDK auto-instruments LangChain/LangGraph executions when available. Traces are exported to the Agent365 backend using Agent Identity tokens. If the packages aren't installed, the app works without observability — no hard dependency.
+12. **A365 observability (preview)** — The Microsoft Agent 365 SDK traces LangChain/LangGraph executions end-to-end with explicit scopes (`InvokeAgentScope`, `InferenceScope`, `ExecuteToolScope`) and automatic chain instrumentation via `CustomLangChainInstrumentor`. Traces are exported to the Agent365 backend using Agent Identity tokens. If the packages aren't installed, the app falls back to `_run_chat_agent()` without observability — no hard dependency.

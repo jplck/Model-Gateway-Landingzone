@@ -88,7 +88,7 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
 | **Container Apps** | — | CAE + Chat Agent + Auth Sidecar (optional) |
 | **ACR** | — | Container Registry (ACR Tasks) |
 | **Storage** | File storage for agents | Spoke storage + blob container (optional, for Agent Identity) |
-| **Observability** | Log Analytics + App Insights | A365 Observability (optional) |
+| **Observability** | Log Analytics + App Insights | A365 Observability (preview) |
 | **Private DNS** | 7 zones (linked to both VNets) | — |
 | **Agent Service** | — | Capability Host + gateway connection → APIM |
 
@@ -241,22 +241,42 @@ The setup script prints the Agent Identity object ID and app ID at the end. Thes
 | `entraIdTenantId` | `""` | Entra tenant ID |
 | `blueprintAppId` | `""` | Blueprint app (client) ID |
 | `agentIdentityAppId` | `""` | Agent Identity app (client) ID |
-| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter |
+| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter (preview) |
 
 **Reference:** [Entra Agent ID preview guide](https://github.com/astaykov/entra-agent-id-preview-guide)
 **Reference:** [Entra Agent ID with Azure Apps](https://github.com/ivanthelad/agentid-app-fic)
-### Optional: A365 Observability
+### A365 Observability (Preview)
 
-The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that automatically trace LangGraph agent executions — LLM calls, tool invocations, and chain runs. Telemetry is exported to the Agent365 backend using a token acquired via the auth sidecar.
+> **Preview:** A365 observability is currently in preview. APIs and telemetry schemas may change.
 
-Enable during `azd up` when prompted, or manually:
+The [Microsoft Agent 365 SDK](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-sdk?tabs=python) provides observability extensions that trace LangGraph agent executions end-to-end. Telemetry is exported to the Agent365 backend using a token acquired via the auth sidecar.
+
+**What gets traced:**
+
+| Scope | Captured Data |
+|---|---|
+| `InvokeAgentScope` | Full agent invocation — input/output messages, session/correlation IDs |
+| `InferenceScope` | LLM calls — model name, provider, input/output token counts, finish reasons |
+| `ExecuteToolScope` | Tool executions — tool name, arguments, results |
+| `BaggageBuilder` | Correlation context — tenant ID, agent ID, correlation ID |
+
+The `CustomLangChainInstrumentor` automatically instruments LangChain/LangGraph chains. On startup, the chat agent configures A365 with a token resolver that calls the auth sidecar's `/AuthorizationHeaderUnauthenticated/AgentToken` endpoint.
+
+**Enable:**
 
 ```bash
 azd env set ENABLE_A365_OBSERVABILITY true
 azd up
 ```
 
-See the [Agent Identity Guide](agent-identity-guide.md) for details on the full setup.
+**Required packages** (installed automatically when enabled):
+
+```
+microsoft-agents-a365-observability-core==0.1.0
+microsoft-agents-a365-observability-extensions-langchain==0.1.0
+```
+
+**Prerequisites:** The auth sidecar must be configured (`AGENTID_SIDECAR_URL` and `AGENT_IDENTITY_APP_ID`). See the [Agent Identity Guide](agent-identity-guide.md) for the full setup.
 ## Parameters
 
 | Parameter | Default | Description |
@@ -269,7 +289,7 @@ See the [Agent Identity Guide](agent-identity-guide.md) for details on the full 
 | `publisherName` | `AI Gateway Team` | APIM publisher name |
 | `hubModelDeployments` | `[gpt-4o]` | Models to deploy on hub Foundry |
 | `enableAuthSidecar` | `false` | Deploy Agent ID auth sidecar alongside chat agent |
-| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter |
+| `enableA365Observability` | `false` | Enable A365 observability telemetry exporter (preview) |
 
 ## Testing the Gateway
 
