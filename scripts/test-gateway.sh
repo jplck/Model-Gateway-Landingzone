@@ -5,7 +5,7 @@
 # Tests:
 #   1. Resolve deployment outputs (APIM URL, subscription key, endpoints)
 #   2. Health check: APIM gateway reachability
-#   3. Chat Completions via APIM → Foundry (gpt-4o) — external
+#   3. Responses via APIM → Foundry (gpt-4o) — external
 #   4. Embeddings via APIM → Foundry (if deployment exists)
 #   5. Error handling: invalid key, wrong deployment
 #   6. Spoke Container App — env vars & internal model call via exec
@@ -113,17 +113,17 @@ else
 fi
 
 # ============================================================================
-# 3. Chat Completions
+# 3. Responses
 # ============================================================================
-header "Chat Completions (gpt-4o)"
+header "Responses (gpt-4o)"
 
 CHAT_RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 30 \
-  -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21" \
+  -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/responses?api-version=2025-03-01-preview" \
   -H "api-key: ${SUB_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role":"user","content":"Reply with exactly: GATEWAY_TEST_OK"}],
-    "max_tokens": 20,
+    "input": "Reply with exactly: GATEWAY_TEST_OK",
+    "max_output_tokens": 20,
     "temperature": 0
   }' 2>/dev/null) || CHAT_RESPONSE=$'\n000'
 
@@ -131,20 +131,20 @@ CHAT_HTTP_CODE=$(echo "$CHAT_RESPONSE" | tail -1)
 CHAT_BODY=$(echo "$CHAT_RESPONSE" | sed '$d')
 
 if [[ "$CHAT_HTTP_CODE" == "200" ]]; then
-  CONTENT=$(echo "$CHAT_BODY" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"//;s/"$//')
+  CONTENT=$(echo "$CHAT_BODY" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"//;s/"$//')
   MODEL=$(json_val "$CHAT_BODY" model)
   TOKENS=$(json_val "$CHAT_BODY" total_tokens)
   info "Model: $MODEL | Tokens: $TOKENS"
   info "Response: $CONTENT"
-  pass "Chat completions working (HTTP 200)"
+  pass "Responses API working (HTTP 200)"
 elif [[ "$CHAT_HTTP_CODE" == "429" ]]; then
   warn "Rate limited (HTTP 429) — the gateway is working but throttled"
-  pass "Chat completions endpoint is functional (rate limited)"
+  pass "Responses API endpoint is functional (rate limited)"
 elif [[ "$CHAT_HTTP_CODE" =~ ^(401|403)$ ]]; then
   fail "Auth error (HTTP $CHAT_HTTP_CODE) — RBAC may still be propagating, retry in a few minutes"
   info "Response: $CHAT_BODY"
 else
-  fail "Chat completions returned HTTP $CHAT_HTTP_CODE"
+  fail "Responses API returned HTTP $CHAT_HTTP_CODE"
   info "Response: $(echo "$CHAT_BODY" | head -c 300)"
 fi
 
@@ -154,7 +154,7 @@ fi
 header "Embeddings (best-effort)"
 
 EMB_RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 30 \
-  -X POST "${APIM_GATEWAY_URL}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2024-10-21" \
+  -X POST "${APIM_GATEWAY_URL}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2025-03-01-preview" \
   -H "api-key: ${SUB_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"input": "test embedding"}' 2>/dev/null) || EMB_RESPONSE=$'\n000'
@@ -176,10 +176,10 @@ header "Error handling"
 
 # 5a. Invalid API key should be rejected
 BAD_KEY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
-  -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21" \
+  -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/responses?api-version=2025-03-01-preview" \
   -H "api-key: invalid-key-12345" \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null) || BAD_KEY_CODE="000"
+  -d '{"input":"hi","max_output_tokens":1}' 2>/dev/null) || BAD_KEY_CODE="000"
 
 if [[ "$BAD_KEY_CODE" == "401" ]]; then
   pass "Invalid API key rejected (HTTP 401)"
@@ -191,10 +191,10 @@ fi
 
 # 5b. Non-existent deployment should return 404
 BAD_DEPLOY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
-  -X POST "${APIM_GATEWAY_URL}/openai/deployments/nonexistent-model/chat/completions?api-version=2024-10-21" \
+  -X POST "${APIM_GATEWAY_URL}/openai/deployments/nonexistent-model/responses?api-version=2025-03-01-preview" \
   -H "api-key: ${SUB_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null) || BAD_DEPLOY_CODE="000"
+  -d '{"input":"hi","max_output_tokens":1}' 2>/dev/null) || BAD_DEPLOY_CODE="000"
 
 if [[ "$BAD_DEPLOY_CODE" == "404" ]]; then
   pass "Non-existent deployment rejected (HTTP 404)"
@@ -255,10 +255,10 @@ if [[ "$TEST_RATELIMIT" == "true" ]]; then
   RATE_LIMITED=false
   for i in $(seq 1 10); do
     RL_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-      -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21" \
+      -X POST "${APIM_GATEWAY_URL}/openai/deployments/gpt-4o/responses?api-version=2025-03-01-preview" \
       -H "api-key: ${SUB_KEY}" \
       -H "Content-Type: application/json" \
-      -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null) || RL_CODE="000"
+      -d '{"input":"hi","max_output_tokens":1}' 2>/dev/null) || RL_CODE="000"
     if [[ "$RL_CODE" == "429" ]]; then
       RATE_LIMITED=true
       info "Request $i: HTTP 429 (rate limited)"

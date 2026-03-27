@@ -5,7 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 
 import httpx
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
@@ -13,7 +13,6 @@ from langgraph.prebuilt import create_react_agent
 from config import (
     APIM_GATEWAY_URL,
     APIM_API_KEY,
-    API_VERSION,
     DEPLOYMENT_NAME,
     AGENTID_SIDECAR_URL,
     AGENT_IDENTITY_APP_ID,
@@ -27,16 +26,17 @@ logger = logging.getLogger("chat-agent")
 # LLM
 # ---------------------------------------------------------------------------
 
-llm: AzureChatOpenAI | None = None
+llm: ChatOpenAI | None = None
 
 if APIM_GATEWAY_URL and APIM_API_KEY:
-    llm = AzureChatOpenAI(
-        azure_endpoint=APIM_GATEWAY_URL,
+    llm = ChatOpenAI(
+        base_url=f"{APIM_GATEWAY_URL.rstrip('/')}/openai/v1",
         api_key=APIM_API_KEY,
-        api_version=API_VERSION,
-        azure_deployment=DEPLOYMENT_NAME,
+        model=DEPLOYMENT_NAME,
+        use_responses_api=True,
+        default_headers={"api-key": APIM_API_KEY},
     )
-    logger.info("LangGraph LLM configured: %s via %s", DEPLOYMENT_NAME, APIM_GATEWAY_URL)
+    logger.info("LangGraph LLM configured: %s via %s (Responses API)", DEPLOYMENT_NAME, APIM_GATEWAY_URL)
 else:
     logger.warning("APIM_GATEWAY_URL or APIM_API_KEY not set — inference disabled")
 
@@ -124,11 +124,12 @@ def get_agent(model: str | None = None):
     """Create a LangGraph ReAct agent, optionally overriding the deployment."""
     agent_llm = llm
     if model and model != DEPLOYMENT_NAME and agent_llm is not None:
-        agent_llm = AzureChatOpenAI(
-            azure_endpoint=APIM_GATEWAY_URL,
+        agent_llm = ChatOpenAI(
+            base_url=f"{APIM_GATEWAY_URL.rstrip('/')}/openai/v1",
             api_key=APIM_API_KEY,
-            api_version=API_VERSION,
-            azure_deployment=model,
+            model=model,
+            use_responses_api=True,
+            default_headers={"api-key": APIM_API_KEY},
         )
     if agent_llm is None:
         return None

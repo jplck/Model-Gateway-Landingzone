@@ -31,7 +31,7 @@
         </set-header>
         <set-header name="api-key" exists-action="delete" />
         <set-query-parameter name="api-version" exists-action="skip">
-          <value>2024-10-21</value>
+          <value>2025-03-01-preview</value>
         </set-query-parameter>
         <set-backend-service backend-id="foundry-backend" />
       </otherwise>

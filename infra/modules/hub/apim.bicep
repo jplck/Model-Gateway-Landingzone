@@ -3,7 +3,7 @@
 //
 // Deploys APIM with:
 //   - Managed identity for backend auth to Foundry
-//   - OpenAI-compatible API with chat/completions, completions, embeddings
+//   - OpenAI-compatible API with responses, embeddings
 //   - Policies: managed-identity auth, rate limiting, logging
 //   - Product + subscription for spoke consumers
 //   - App Insights logger + diagnostics
@@ -147,7 +147,7 @@ resource apimDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
 }
 
 // ============================================================================
-// Backend — Foundry Endpoint
+// Backend — Foundry Endpoint (deployment-based: cognitiveservices.azure.com)
 // ============================================================================
 
 resource foundryBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-preview' = {
@@ -157,6 +157,23 @@ resource foundryBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-pre
     title: 'Hub Foundry Backend'
     description: 'Primary Azure AI Foundry model endpoint'
     url: '${foundryEndpoint}openai'
+    protocol: 'http'
+  }
+}
+
+// ============================================================================
+// Backend — Foundry Responses API (OpenAI-compatible: openai.azure.com/v1)
+// ============================================================================
+
+var foundryOpenAIEndpoint = replace(foundryEndpoint, '.cognitiveservices.azure.com', '.openai.azure.com')
+
+resource foundryResponsesBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-preview' = {
+  parent: apim
+  name: 'foundry-responses-backend'
+  properties: {
+    title: 'Hub Foundry Responses Backend'
+    description: 'Azure AI Foundry OpenAI-compatible endpoint for Responses API'
+    url: '${foundryOpenAIEndpoint}openai/v1'
     protocol: 'http'
   }
 }
@@ -182,31 +199,23 @@ resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
   }
 }
 
-// --- Chat Completions ---
-resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+// --- Responses (OpenAI-compatible: /v1/responses) ---
+resource responsesV1Op 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
   parent: openaiApi
-  name: 'chat-completions'
+  name: 'responses-v1'
   properties: {
-    displayName: 'Chat Completions'
+    displayName: 'Responses (OpenAI-compatible)'
     method: 'POST'
-    urlTemplate: '/deployments/{deployment-id}/chat/completions'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
+    urlTemplate: '/v1/responses'
   }
 }
 
-// --- Completions ---
-resource completionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'completions'
+resource responsesV1Policy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: responsesV1Op
+  name: 'policy'
   properties: {
-    displayName: 'Completions'
-    method: 'POST'
-    urlTemplate: '/deployments/{deployment-id}/completions'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
+    format: 'rawxml'
+    value: '<policies><inbound><base /><set-backend-service backend-id="foundry-responses-backend" /><rewrite-uri template="/responses" copy-unmatched-params="false" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
   }
 }
 

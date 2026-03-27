@@ -62,7 +62,7 @@ Derived from [spec.md](spec.md). Hub-and-spoke architecture on Azure: the hub pr
 - [x] **4.1** Deploy Azure API Management instance (Developer / Standard v2 / Premium)
 - [x] **4.2** Configure VNet integration for APIM (internal or external mode)
 - [x] **4.3** Register the Foundry model endpoint as an APIM backend (managed identity or key-based auth)
-- [x] **4.4** Create APIM API definition(s) exposing OpenAI-compatible inference endpoints (`/chat/completions`, `/completions`, `/embeddings`, etc.)
+- [x] **4.4** Create APIM API definition(s) exposing OpenAI-compatible inference endpoints (`/responses`, `/embeddings`, etc.)
 - [x] **4.5** Implement APIM policies:
   - Authentication (validate JWT / subscription key)
   - Request/response logging (sanitised) → App Insights

@@ -108,6 +108,21 @@ else:
 # ---------------------------------------------------------------------------
 
 
+def _extract_text(content) -> str:
+    """Extract plain text from message content (string or Responses API content blocks)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("text"):
+                parts.append(block["text"])
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return str(content)
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -328,10 +343,10 @@ async def chat(req: ChatRequest):
                         if msg.type == "tool" and tool_calls_made:
                             for tci in tool_calls_made:
                                 if tci.name == msg.name and tci.result == "":
-                                    tci.result = msg.content
+                                    tci.result = _extract_text(msg.content)
                                     break
                         if msg.type == "ai" and msg.content:
-                            reply = msg.content
+                            reply = _extract_text(msg.content)
 
                     # Record token usage if available from the last AI message
                     last_ai = next(
@@ -389,10 +404,10 @@ async def _run_chat_agent(agent, messages, tool_calls_made):
             if msg.type == "tool" and tool_calls_made:
                 for tci in tool_calls_made:
                     if tci.name == msg.name and tci.result == "":
-                        tci.result = msg.content
+                        tci.result = _extract_text(msg.content)
                         break
             if msg.type == "ai" and msg.content:
-                reply = msg.content
+                reply = _extract_text(msg.content)
 
         return ChatResponse(reply=reply, tool_calls=tool_calls_made)
     except Exception as e:

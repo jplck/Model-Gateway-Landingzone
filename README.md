@@ -302,13 +302,13 @@ SUB_KEY=$(az rest --method post \
   --url "https://management.azure.com/subscriptions/{sub}/resourceGroups/rg-aigw-hub-dev/providers/Microsoft.ApiManagement/service/{apim}/subscriptions/spoke-subscription/listSecrets?api-version=2024-05-01" \
   --query primaryKey -o tsv)
 
-# Call chat completions
-curl -X POST "${APIM_URL}/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21" \
+# Call responses API
+curl -X POST "${APIM_URL}/openai/deployments/gpt-4o/responses?api-version=2025-03-01-preview" \
   -H "api-key: ${SUB_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
+    "input": "Hello!",
+    "max_output_tokens": 100
   }'
 ```
 

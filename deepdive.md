@@ -185,8 +185,7 @@ The primary API exposes OpenAI-compatible endpoints:
 
 | Operation | Method | URL Template |
 |-----------|--------|-------------|
-| Chat Completions | POST | `/openai/deployments/{deployment-id}/chat/completions` |
-| Completions | POST | `/openai/deployments/{deployment-id}/completions` |
+| Responses | POST | `/openai/deployments/{deployment-id}/responses` |
 | Embeddings | POST | `/openai/deployments/{deployment-id}/embeddings` |
 | List Deployments | GET | `/openai/deployments` |
 | Get Deployment | GET | `/openai/deployments/{deployment-id}` |
@@ -512,7 +511,7 @@ Browser  →  POST APIM/chat/api/chat  {messages: [...]}
          →  APIM (no subscription required)  →  Container App POST /api/chat
 
 Container App  →  OpenAI SDK (AzureOpenAI)
-               →  POST APIM/openai/deployments/gpt-4o/chat/completions
+               →  POST APIM/openai/deployments/gpt-4o/responses
                    Header: api-key: <spoke-subscription-key>
                →  APIM validates subscription key
                →  APIM policy: acquires MI token for cognitiveservices.azure.com
