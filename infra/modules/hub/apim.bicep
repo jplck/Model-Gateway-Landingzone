@@ -179,149 +179,6 @@ resource foundryResponsesBackend 'Microsoft.ApiManagement/service/backends@2024-
 }
 
 // ============================================================================
-// API — OpenAI-compatible inference
-// ============================================================================
-
-resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
-  parent: apim
-  name: 'openai-api'
-  properties: {
-    displayName: 'OpenAI API'
-    description: 'OpenAI-compatible model inference API proxied through AI Gateway'
-    path: 'openai'
-    protocols: ['https']
-    subscriptionRequired: true
-    subscriptionKeyParameterNames: {
-      header: 'api-key'
-      query: 'api-key'
-    }
-    serviceUrl: '${foundryEndpoint}openai'
-  }
-}
-
-// --- Responses (OpenAI-compatible: /v1/responses) ---
-resource responsesV1Op 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'responses-v1'
-  properties: {
-    displayName: 'Responses (OpenAI-compatible)'
-    method: 'POST'
-    urlTemplate: '/v1/responses'
-  }
-}
-
-resource responsesV1Policy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
-  parent: responsesV1Op
-  name: 'policy'
-  properties: {
-    format: 'rawxml'
-    value: '<policies><inbound><base /><set-backend-service backend-id="foundry-responses-backend" /><rewrite-uri template="/responses" copy-unmatched-params="false" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
-  }
-}
-
-// --- Embeddings ---
-resource embeddingsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'embeddings'
-  properties: {
-    displayName: 'Embeddings'
-    method: 'POST'
-    urlTemplate: '/deployments/{deployment-id}/embeddings'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
-  }
-}
-
-// ARM management base URL for deployment discovery (cloud-agnostic)
-var armBaseUrl = environment().resourceManager
-var armFoundryUrl = '${armBaseUrl}${existingFoundryAccount.id}'
-
-// --- List Deployments (for Agent Service dynamic model discovery) ---
-resource listDeploymentsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'list-deployments'
-  properties: {
-    displayName: 'List Deployments'
-    method: 'GET'
-    urlTemplate: '/deployments'
-  }
-}
-
-resource listDeploymentsPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
-  parent: listDeploymentsOp
-  name: 'policy'
-  properties: {
-    format: 'rawxml'
-    value: '<policies><inbound><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments?api-version=2023-05-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
-  }
-}
-
-// --- Get Deployment (for Agent Service dynamic model discovery) ---
-resource getDeploymentOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'get-deployment'
-  properties: {
-    displayName: 'Get Deployment'
-    method: 'GET'
-    urlTemplate: '/deployments/{deployment-id}'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
-  }
-}
-
-resource getDeploymentPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
-  parent: getDeploymentOp
-  name: 'policy'
-  properties: {
-    format: 'rawxml'
-    value: '<policies><inbound><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments/{deployment-id}?api-version=2023-05-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
-  }
-}
-
-// --- Chat Completions ---
-resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'chat-completions'
-  properties: {
-    displayName: 'Chat Completions'
-    method: 'POST'
-    urlTemplate: '/deployments/{deployment-id}/chat/completions'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
-  }
-}
-
-// --- Responses (deployment-based: /deployments/{id}/responses) ---
-resource responsesDeploymentOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'responses-deployment'
-  properties: {
-    displayName: 'Responses (deployment-based)'
-    method: 'POST'
-    urlTemplate: '/deployments/{deployment-id}/responses'
-    templateParameters: [
-      { name: 'deployment-id', required: true, type: 'string' }
-    ]
-  }
-}
-
-// ============================================================================
-// API-level Policy
-// ============================================================================
-
-resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview' = {
-  parent: openaiApi
-  name: 'policy'
-  properties: {
-    format: 'rawxml'
-    value: loadTextContent('policies/openai-api-policy.xml')
-  }
-}
-
-// ============================================================================
 // APIM Diagnostics (request/response logging → App Insights)
 // ============================================================================
 
@@ -345,6 +202,135 @@ resource apiDiagnostics 'Microsoft.ApiManagement/service/diagnostics@2024-06-01-
       request: { headers: [], body: { bytes: 0 } }
       response: { headers: [], body: { bytes: 0 } }
     }
+  }
+}
+
+// ============================================================================
+// API — OpenAI-compatible (unified: inference + gateway discovery)
+// ============================================================================
+
+// ARM management base URL for deployment discovery (cloud-agnostic)
+var armBaseUrl = environment().resourceManager
+var armFoundryUrl = '${armBaseUrl}${substring(existingFoundryAccount.id, 1)}'
+
+resource openaiApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
+  parent: apim
+  name: 'openai-api'
+  properties: {
+    displayName: 'OpenAI API'
+    description: 'OpenAI-compatible model inference + Agent Service gateway (discovery, deployment-based inference)'
+    path: 'openai'
+    protocols: ['https']
+    subscriptionRequired: true
+    subscriptionKeyParameterNames: {
+      header: 'api-key'
+      query: 'api-key'
+    }
+    serviceUrl: '${foundryEndpoint}openai'
+  }
+}
+
+// --- Chat Completions ---
+resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'chat-completions'
+  properties: {
+    displayName: 'Chat Completions'
+    method: 'POST'
+    urlTemplate: '/deployments/{deployment-id}/chat/completions'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
+// --- Embeddings ---
+resource embeddingsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'embeddings'
+  properties: {
+    displayName: 'Embeddings'
+    method: 'POST'
+    urlTemplate: '/deployments/{deployment-id}/embeddings'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
+// --- Responses (OpenAI-compatible: /v1/responses) ---
+resource responsesV1Op 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'responses-v1'
+  properties: {
+    displayName: 'Responses (OpenAI-compatible)'
+    method: 'POST'
+    urlTemplate: '/v1/responses'
+  }
+}
+
+resource responsesV1Policy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: responsesV1Op
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '<policies><inbound><base /><set-backend-service backend-id="foundry-responses-backend" /><rewrite-uri template="/responses" copy-unmatched-params="false" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+  }
+}
+
+// --- List Deployments (ARM proxy for Agent Service discovery) ---
+resource listDeploymentsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'list-deployments'
+  properties: {
+    displayName: 'List Deployments'
+    method: 'GET'
+    urlTemplate: '/deployments'
+  }
+}
+
+resource listDeploymentsPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: listDeploymentsOp
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '<policies><inbound><base /><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments?api-version=2024-10-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+  }
+}
+
+// --- Get Deployment (ARM proxy for Agent Service discovery) ---
+resource getDeploymentOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'get-deployment'
+  properties: {
+    displayName: 'Get Deployment'
+    method: 'GET'
+    urlTemplate: '/deployments/{deployment-id}'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
+resource getDeploymentPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = {
+  parent: getDeploymentOp
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '<policies><inbound><base /><authentication-managed-identity resource="${armBaseUrl}" /><rewrite-uri template="/deployments/{deployment-id}?api-version=2024-10-01" copy-unmatched-params="false" /><set-backend-service base-url="${armFoundryUrl}" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+  }
+}
+
+// ============================================================================
+// API-level Policy
+// ============================================================================
+
+resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: loadTextContent('policies/openai-api-policy.xml')
   }
 }
 
