@@ -129,7 +129,7 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-10-02-preview'
     publicNetworkAccess: 'Disabled'
     vnetConfiguration: {
       infrastructureSubnetId: containerAppsSubnetId
-      internal: false
+      internal: true
     }
     workloadProfiles: [
       {

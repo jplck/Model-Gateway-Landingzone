@@ -280,6 +280,34 @@ resource getDeploymentPolicy 'Microsoft.ApiManagement/service/apis/operations/po
   }
 }
 
+// --- Chat Completions ---
+resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'chat-completions'
+  properties: {
+    displayName: 'Chat Completions'
+    method: 'POST'
+    urlTemplate: '/deployments/{deployment-id}/chat/completions'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
+// --- Responses (deployment-based: /deployments/{id}/responses) ---
+resource responsesDeploymentOp 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = {
+  parent: openaiApi
+  name: 'responses-deployment'
+  properties: {
+    displayName: 'Responses (deployment-based)'
+    method: 'POST'
+    urlTemplate: '/deployments/{deployment-id}/responses'
+    templateParameters: [
+      { name: 'deployment-id', required: true, type: 'string' }
+    ]
+  }
+}
+
 // ============================================================================
 // API-level Policy
 // ============================================================================

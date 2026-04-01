@@ -1,0 +1,1102 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "13098861380602402017"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Primary Azure region"
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "Environment name (e.g., dev, prod)"
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "aigw",
+      "metadata": {
+        "description": "Project name used in resource naming"
+      }
+    },
+    "hubResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Hub resource group name"
+      }
+    },
+    "spokeResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Spoke resource group name"
+      }
+    },
+    "deploySpokeFoundry": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy agent subnet in spoke (required for spoke Foundry)"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags"
+      }
+    }
+  },
+  "variables": {
+    "defaultTags": "[union(createObject('environment', parameters('environmentName'), 'project', parameters('projectName'), 'managedBy', 'bicep'), parameters('tags'))]",
+    "dnsZoneNames": [
+      "privatelink.cognitiveservices.azure.com",
+      "privatelink.openai.azure.com",
+      "privatelink.services.ai.azure.com",
+      "privatelink.blob.core.windows.net",
+      "privatelink.search.windows.net",
+      "privatelink.documents.azure.com"
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('hubResourceGroupName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('defaultTags')]"
+    },
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('spokeResourceGroupName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('defaultTags')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "hub-networking",
+      "resourceGroup": "[parameters('hubResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "projectName": {
+            "value": "[parameters('projectName')]"
+          },
+          "environmentName": {
+            "value": "[parameters('environmentName')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "13207516775909498265"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all networking resources"
+              }
+            },
+            "projectName": {
+              "type": "string",
+              "metadata": {
+                "description": "Project name used in resource naming"
+              }
+            },
+            "environmentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name (e.g., dev, prod)"
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.0.0/16",
+              "metadata": {
+                "description": "Hub VNet address space"
+              }
+            },
+            "apimSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.1.0/24",
+              "metadata": {
+                "description": "APIM subnet address prefix"
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.2.0/24",
+              "metadata": {
+                "description": "Private endpoints subnet address prefix"
+              }
+            },
+            "agentSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.0.3.0/24",
+              "metadata": {
+                "description": "Agent subnet address prefix (delegated to Microsoft.App/environments)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-apim-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-Storage-Outbound",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourceAddressPrefix": "VirtualNetwork",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "Storage",
+                      "destinationPortRange": "443"
+                    }
+                  },
+                  {
+                    "name": "Allow-KeyVault-Outbound",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourceAddressPrefix": "VirtualNetwork",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "AzureKeyVault",
+                      "destinationPortRange": "443"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-pe-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-agent-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "snet-apim",
+                    "properties": {
+                      "addressPrefix": "[parameters('apimSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-apim-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "Microsoft.Web.serverFarms",
+                          "properties": {
+                            "serviceName": "Microsoft.Web/serverFarms"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "snet-pe",
+                    "properties": {
+                      "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-pe-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "snet-agent",
+                    "properties": {
+                      "addressPrefix": "[parameters('agentSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-agent-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "Microsoft.App.environments",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-agent-{0}-{1}', parameters('projectName'), parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-apim-{0}-{1}', parameters('projectName'), parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-pe-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName')))]"
+            },
+            "vnetName": {
+              "type": "string",
+              "value": "[format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName'))]"
+            },
+            "apimSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName')), 'snet-apim')]"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName')), 'snet-pe')]"
+            },
+            "agentSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('vnet-{0}-hub-{1}', parameters('projectName'), parameters('environmentName')), 'snet-agent')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubResourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "hub-dns",
+      "resourceGroup": "[parameters('hubResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "hubVnetId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "13404777026303078538"
+            }
+          },
+          "parameters": {
+            "hubVnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Hub VNet resource ID to link DNS zones to"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the Container Apps private DNS zone"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags applied to all resources"
+              }
+            }
+          },
+          "variables": {
+            "dnsZoneNames": [
+              "privatelink.cognitiveservices.azure.com",
+              "privatelink.openai.azure.com",
+              "privatelink.services.ai.azure.com",
+              "privatelink.blob.core.windows.net",
+              "privatelink.search.windows.net",
+              "privatelink.documents.azure.com"
+            ],
+            "containerAppsDnsZoneName": "[format('privatelink.{0}.azurecontainerapps.io', parameters('location'))]"
+          },
+          "resources": [
+            {
+              "copy": {
+                "name": "privateDnsZones",
+                "count": "[length(variables('dnsZoneNames'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[variables('dnsZoneNames')[copyIndex()]]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "copy": {
+                "name": "hubVnetLinks",
+                "count": "[length(variables('dnsZoneNames'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', variables('dnsZoneNames')[copyIndex()], 'link-hub-vnet')]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('hubVnetId')]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[copyIndex()])]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[variables('containerAppsDnsZoneName')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', variables('containerAppsDnsZoneName'), 'link-hub-vnet')]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('hubVnetId')]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('containerAppsDnsZoneName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "cognitiveServicesDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[0])]"
+            },
+            "openAiDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[1])]"
+            },
+            "aiServicesDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[2])]"
+            },
+            "storageBlobDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[3])]"
+            },
+            "searchDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[4])]"
+            },
+            "cosmosDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneNames')[5])]"
+            },
+            "containerAppsDnsZoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('containerAppsDnsZoneName'))]"
+            },
+            "containerAppsDnsZoneName": {
+              "type": "string",
+              "value": "[variables('containerAppsDnsZoneName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubResourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "spoke-networking",
+      "resourceGroup": "[parameters('spokeResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "projectName": {
+            "value": "[parameters('projectName')]"
+          },
+          "environmentName": {
+            "value": "[parameters('environmentName')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          },
+          "deployAgentSubnet": {
+            "value": "[parameters('deploySpokeFoundry')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "1614098213427606723"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "projectName": {
+              "type": "string",
+              "metadata": {
+                "description": "Project name"
+              }
+            },
+            "environmentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags"
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.0.0/16",
+              "metadata": {
+                "description": "Spoke VNet address space"
+              }
+            },
+            "containerAppsSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.0.0/23",
+              "metadata": {
+                "description": "Container Apps Environment subnet prefix (minimum /23)"
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.2.0/24",
+              "metadata": {
+                "description": "Private endpoints subnet prefix"
+              }
+            },
+            "agentSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.1.3.0/24",
+              "metadata": {
+                "description": "Agent subnet prefix (for optional spoke Foundry)"
+              }
+            },
+            "deployAgentSubnet": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Deploy agent subnet (required when spoke Foundry is enabled)"
+              }
+            }
+          },
+          "variables": {
+            "baseSubnets": [
+              {
+                "name": "snet-container-apps",
+                "properties": {
+                  "addressPrefix": "[parameters('containerAppsSubnetPrefix')]",
+                  "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-ca-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+                  },
+                  "delegations": [
+                    {
+                      "name": "Microsoft.App.environments",
+                      "properties": {
+                        "serviceName": "Microsoft.App/environments"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "snet-pe",
+                "properties": {
+                  "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+                  "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-spoke-pe-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+                  }
+                }
+              }
+            ],
+            "agentSubnetDef": "[if(parameters('deployAgentSubnet'), createArray(createObject('name', 'snet-agent', 'properties', createObject('addressPrefix', parameters('agentSubnetPrefix'), 'networkSecurityGroup', createObject('id', resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-spoke-agent-{0}-{1}', parameters('projectName'), parameters('environmentName')))), 'delegations', createArray(createObject('name', 'Microsoft.App.environments', 'properties', createObject('serviceName', 'Microsoft.App/environments')))))), createArray())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-ca-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Deny-Internet-Inbound",
+                    "properties": {
+                      "priority": 1000,
+                      "direction": "Inbound",
+                      "access": "Deny",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "Internet",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "*",
+                      "destinationPortRange": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-spoke-pe-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[parameters('deployAgentSubnet')]",
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('nsg-spoke-agent-{0}-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": "[concat(variables('baseSubnets'), variables('agentSubnetDef'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-spoke-agent-{0}-{1}', parameters('projectName'), parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-ca-{0}-{1}', parameters('projectName'), parameters('environmentName')))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-spoke-pe-{0}-{1}', parameters('projectName'), parameters('environmentName')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName')))]"
+            },
+            "vnetName": {
+              "type": "string",
+              "value": "[format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName'))]"
+            },
+            "containerAppsSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName')), 'snet-container-apps')]"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName')), 'snet-pe')]"
+            },
+            "agentSubnetId": {
+              "type": "string",
+              "value": "[if(parameters('deployAgentSubnet'), format('{0}/subnets/snet-agent', resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-spoke-{1}', parameters('projectName'), parameters('environmentName')))), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('spokeResourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "peer-spoke-to-hub",
+      "resourceGroup": "[parameters('spokeResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "localVnetName": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetName.value]"
+          },
+          "remoteVnetId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "peeringName": {
+            "value": "peer-spoke-to-hub"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "6581458835954444446"
+            }
+          },
+          "parameters": {
+            "localVnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the local VNet (must exist in current resource group)"
+              }
+            },
+            "remoteVnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the remote VNet to peer with"
+              }
+            },
+            "peeringName": {
+              "type": "string",
+              "metadata": {
+                "description": "Peering name"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('localVnetName'), parameters('peeringName'))]",
+              "properties": {
+                "remoteVirtualNetwork": {
+                  "id": "[parameters('remoteVnetId')]"
+                },
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('spokeResourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "peer-hub-to-spoke",
+      "resourceGroup": "[parameters('hubResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "localVnetName": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.vnetName.value]"
+          },
+          "remoteVnetId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "peeringName": {
+            "value": "peer-hub-to-spoke"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "6581458835954444446"
+            }
+          },
+          "parameters": {
+            "localVnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the local VNet (must exist in current resource group)"
+              }
+            },
+            "remoteVnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the remote VNet to peer with"
+              }
+            },
+            "peeringName": {
+              "type": "string",
+              "metadata": {
+                "description": "Peering name"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('localVnetName'), parameters('peeringName'))]",
+              "properties": {
+                "remoteVirtualNetwork": {
+                  "id": "[parameters('remoteVnetId')]"
+                },
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubResourceGroupName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking')]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "spokeDnsLinks",
+        "count": "[length(variables('dnsZoneNames'))]"
+      },
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('dns-link-spoke-{0}', copyIndex())]",
+      "resourceGroup": "[parameters('hubResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "dnsZoneName": {
+            "value": "[variables('dnsZoneNames')[copyIndex()]]"
+          },
+          "vnetId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "linkName": {
+            "value": "link-spoke-vnet"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "10288697010168198549"
+            }
+          },
+          "parameters": {
+            "dnsZoneName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the existing private DNS zone (e.g., privatelink.blob.core.windows.net)"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the VNet to link"
+              }
+            },
+            "linkName": {
+              "type": "string",
+              "metadata": {
+                "description": "Link name (must be unique per DNS zone)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('dnsZoneName'), parameters('linkName'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                },
+                "registrationEnabled": false
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubResourceGroupName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "dns-link-spoke-cae",
+      "resourceGroup": "[parameters('hubResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "dnsZoneName": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.containerAppsDnsZoneName.value]"
+          },
+          "vnetId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "linkName": {
+            "value": "link-spoke-vnet"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "10288697010168198549"
+            }
+          },
+          "parameters": {
+            "dnsZoneName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the existing private DNS zone (e.g., privatelink.blob.core.windows.net)"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the VNet to link"
+              }
+            },
+            "linkName": {
+              "type": "string",
+              "metadata": {
+                "description": "Link name (must be unique per DNS zone)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('dnsZoneName'), parameters('linkName'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                },
+                "registrationEnabled": false
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubResourceGroupName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "hubResourceGroupName": {
+      "type": "string",
+      "value": "[parameters('hubResourceGroupName')]"
+    },
+    "spokeResourceGroupName": {
+      "type": "string",
+      "value": "[parameters('spokeResourceGroupName')]"
+    },
+    "hubVnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.vnetId.value]"
+    },
+    "hubVnetName": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.vnetName.value]"
+    },
+    "hubApimSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.apimSubnetId.value]"
+    },
+    "hubPrivateEndpointSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+    },
+    "hubAgentSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-networking'), '2025-04-01').outputs.agentSubnetId.value]"
+    },
+    "spokeVnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetId.value]"
+    },
+    "spokeVnetName": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.vnetName.value]"
+    },
+    "spokeContainerAppsSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.containerAppsSubnetId.value]"
+    },
+    "spokePrivateEndpointSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+    },
+    "spokeAgentSubnetId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('spokeResourceGroupName')), 'Microsoft.Resources/deployments', 'spoke-networking'), '2025-04-01').outputs.agentSubnetId.value]"
+    },
+    "cognitiveServicesDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.cognitiveServicesDnsZoneId.value]"
+    },
+    "openAiDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.openAiDnsZoneId.value]"
+    },
+    "aiServicesDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.aiServicesDnsZoneId.value]"
+    },
+    "storageBlobDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.storageBlobDnsZoneId.value]"
+    },
+    "searchDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.searchDnsZoneId.value]"
+    },
+    "cosmosDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.cosmosDnsZoneId.value]"
+    },
+    "containerAppsDnsZoneId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.containerAppsDnsZoneId.value]"
+    },
+    "containerAppsDnsZoneName": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubResourceGroupName')), 'Microsoft.Resources/deployments', 'hub-dns'), '2025-04-01').outputs.containerAppsDnsZoneName.value]"
+    }
+  }
+}

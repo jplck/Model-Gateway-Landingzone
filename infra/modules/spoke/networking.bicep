@@ -24,7 +24,7 @@ param containerAppsSubnetPrefix string = '10.1.0.0/23'
 param privateEndpointSubnetPrefix string = '10.1.2.0/24'
 
 @description('Agent subnet prefix (for optional spoke Foundry)')
-param agentSubnetPrefix string = '10.1.3.0/27'
+param agentSubnetPrefix string = '10.1.3.0/24'
 
 @description('Deploy agent subnet (required when spoke Foundry is enabled)')
 param deployAgentSubnet bool = false

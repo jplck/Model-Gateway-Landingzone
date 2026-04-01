@@ -1,9 +1,12 @@
 // ============================================================================
-// Azure AI Foundry — Account, Project, Supporting Resources, Capability Hosts
+// Azure AI Foundry — Account, Project, Supporting Resources (Core)
 //
-// Deploys the standard capability-hosts pattern:
+// Deploys Foundry account and backing resources:
 //   Storage Account, AI Search, Cosmos DB, AI Services Account, Project,
-//   Connections, RBAC, Capability Hosts, Private Endpoints, Diagnostics
+//   Connections, RBAC
+//
+// Private endpoints and diagnostics are deployed separately via
+// foundry-network.bicep to avoid race conditions with networkInjections.
 //
 // Reusable for both hub and spoke Foundry deployments (set instanceSuffix).
 // ============================================================================
@@ -23,33 +26,8 @@ param tags object = {}
 @description('Instance suffix to differentiate hub/spoke deployments')
 param instanceSuffix string = 'hub'
 
-@description('Private endpoint subnet ID')
-param privateEndpointSubnetId string
-
 @description('Agent subnet ID (delegated to Microsoft.App/environments)')
 param agentSubnetId string
-
-@description('Log Analytics workspace ID for diagnostic settings')
-param logAnalyticsWorkspaceId string
-
-// DNS zone IDs for private endpoints
-@description('Private DNS zone ID for Cognitive Services')
-param cognitiveServicesDnsZoneId string
-
-@description('Private DNS zone ID for OpenAI')
-param openAiDnsZoneId string
-
-@description('Private DNS zone ID for AI Services (services.ai.azure.com)')
-param aiServicesDnsZoneId string
-
-@description('Private DNS zone ID for Blob Storage')
-param storageBlobDnsZoneId string
-
-@description('Private DNS zone ID for AI Search')
-param searchDnsZoneId string
-
-@description('Private DNS zone ID for Cosmos DB')
-param cosmosDnsZoneId string
 
 @description('Model deployments to create on this Foundry instance')
 param modelDeployments modelDeploymentType[] = [
@@ -69,6 +47,7 @@ param apimGatewayUrl string = ''
 @secure()
 @description('APIM subscription key for agent gateway connection')
 param apimSubscriptionKey string = ''
+
 @description('Application Insights connection string for tracing')
 param appInsightsConnectionString string = ''
 
@@ -179,8 +158,6 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
-    // Cosmos DB is accessed by the capability host through the private endpoint.
-    // Public access is disabled; AzureServices bypass is kept for platform services.
     publicNetworkAccess: 'Disabled'
     networkAclBypass: 'AzureServices'
   }
@@ -418,142 +395,6 @@ resource projectCogServicesUser 'Microsoft.Authorization/roleAssignments@2022-04
 // ============================================================================
 
 // ============================================================================
-// Private Endpoints
-// ============================================================================
-
-// --- AI Services ---
-resource aiServicesPe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
-  name: 'pe-${aiServicesName}'
-  location: location
-  tags: tags
-  properties: {
-    subnet: { id: privateEndpointSubnetId }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-${aiServicesName}'
-        properties: {
-          privateLinkServiceId: aiServicesAccount.id
-          groupIds: ['account']
-        }
-      }
-    ]
-  }
-}
-
-resource aiServicesPeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
-  parent: aiServicesPe
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      { name: 'cognitiveservices', properties: { privateDnsZoneId: cognitiveServicesDnsZoneId } }
-      { name: 'openai', properties: { privateDnsZoneId: openAiDnsZoneId } }
-      { name: 'aiservices', properties: { privateDnsZoneId: aiServicesDnsZoneId } }
-    ]
-  }
-}
-
-// --- Storage ---
-resource storagePe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
-  name: 'pe-${storageAccountName}'
-  location: location
-  tags: tags
-  properties: {
-    subnet: { id: privateEndpointSubnetId }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-${storageAccountName}'
-        properties: {
-          privateLinkServiceId: storageAccount.id
-          groupIds: ['blob']
-        }
-      }
-    ]
-  }
-}
-
-resource storagePeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
-  parent: storagePe
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      { name: 'blob', properties: { privateDnsZoneId: storageBlobDnsZoneId } }
-    ]
-  }
-}
-
-// --- AI Search ---
-resource searchPe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
-  name: 'pe-${searchServiceName}'
-  location: location
-  tags: tags
-  properties: {
-    subnet: { id: privateEndpointSubnetId }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-${searchServiceName}'
-        properties: {
-          privateLinkServiceId: searchService.id
-          groupIds: ['searchService']
-        }
-      }
-    ]
-  }
-}
-
-resource searchPeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
-  parent: searchPe
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      { name: 'search', properties: { privateDnsZoneId: searchDnsZoneId } }
-    ]
-  }
-}
-
-// --- Cosmos DB ---
-resource cosmosPe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
-  name: 'pe-${cosmosAccountName}'
-  location: location
-  tags: tags
-  properties: {
-    subnet: { id: privateEndpointSubnetId }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-${cosmosAccountName}'
-        properties: {
-          privateLinkServiceId: cosmosAccount.id
-          groupIds: ['Sql']
-        }
-      }
-    ]
-  }
-}
-
-resource cosmosPeDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
-  parent: cosmosPe
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      { name: 'cosmos', properties: { privateDnsZoneId: cosmosDnsZoneId } }
-    ]
-  }
-}
-
-// ============================================================================
-// Diagnostic Settings
-// ============================================================================
-
-resource aiServicesDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: 'diag-${aiServicesName}'
-  scope: aiServicesAccount
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logs: [{ categoryGroup: 'allLogs', enabled: true }]
-    metrics: [{ category: 'AllMetrics', enabled: true }]
-  }
-}
-
-// ============================================================================
 // Application Insights Connection (tracing & telemetry)
 // ============================================================================
 
@@ -635,3 +476,6 @@ output projectEndpoint string = 'https://${aiServicesAccount.name}.services.ai.a
 output storageConnectionName string = storageConnection.name
 output searchConnectionName string = searchConnection.name
 output cosmosConnectionName string = cosmosConnection.name
+output storageAccountName string = storageAccount.name
+output searchServiceName string = searchService.name
+output cosmosAccountName string = cosmosAccount.name

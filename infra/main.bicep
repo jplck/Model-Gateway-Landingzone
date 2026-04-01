@@ -150,7 +150,7 @@ module hubObservability 'modules/hub/observability.bicep' = {
 // Phase 3 — Hub Foundry (First Model Backend)
 // ============================================================================
 
-module hubFoundry 'modules/hub/foundry.bicep' = {
+module hubFoundry 'modules/hub/foundry-core.bicep' = {
   scope: hubRg
   params: {
     location: location
@@ -158,15 +158,7 @@ module hubFoundry 'modules/hub/foundry.bicep' = {
     environmentName: environmentName
     tags: tags
     instanceSuffix: 'hub'
-    privateEndpointSubnetId: hubNetworking.outputs.privateEndpointSubnetId
     agentSubnetId: hubNetworking.outputs.agentSubnetId
-    logAnalyticsWorkspaceId: hubObservability.outputs.logAnalyticsWorkspaceId
-    cognitiveServicesDnsZoneId: hubDns.outputs.cognitiveServicesDnsZoneId
-    openAiDnsZoneId: hubDns.outputs.openAiDnsZoneId
-    aiServicesDnsZoneId: hubDns.outputs.aiServicesDnsZoneId
-    storageBlobDnsZoneId: hubDns.outputs.storageBlobDnsZoneId
-    searchDnsZoneId: hubDns.outputs.searchDnsZoneId
-    cosmosDnsZoneId: hubDns.outputs.cosmosDnsZoneId
     modelDeployments: hubModelDeployments
     appInsightsConnectionString: hubObservability.outputs.appInsightsConnectionString
   }
@@ -324,7 +316,7 @@ module apimChatApi 'modules/hub/apim-chat-api.bicep' = {
 // Phase 8 — Spoke Foundry (Conditional — Agent Service)
 // ============================================================================
 
-module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
+module spokeFoundry 'modules/hub/foundry-core.bicep' = if (deploySpokeFoundry) {
   scope: spokeRg
   params: {
     location: location
@@ -332,15 +324,7 @@ module spokeFoundry 'modules/hub/foundry.bicep' = if (deploySpokeFoundry) {
     environmentName: environmentName
     tags: tags
     instanceSuffix: 'spoke'
-    privateEndpointSubnetId: spokeNetworking.outputs.privateEndpointSubnetId
     agentSubnetId: spokeNetworking.outputs.agentSubnetId
-    logAnalyticsWorkspaceId: hubObservability.outputs.logAnalyticsWorkspaceId
-    cognitiveServicesDnsZoneId: hubDns.outputs.cognitiveServicesDnsZoneId
-    openAiDnsZoneId: hubDns.outputs.openAiDnsZoneId
-    aiServicesDnsZoneId: hubDns.outputs.aiServicesDnsZoneId
-    storageBlobDnsZoneId: hubDns.outputs.storageBlobDnsZoneId
-    searchDnsZoneId: hubDns.outputs.searchDnsZoneId
-    cosmosDnsZoneId: hubDns.outputs.cosmosDnsZoneId
     modelDeployments: [] // Spoke uses hub models via APIM gateway
     apimGatewayUrl: hubApim.outputs.apimGatewayUrl
     apimSubscriptionKey: hubApim.outputs.spokeSubscriptionKey
@@ -378,3 +362,15 @@ output spokeProjectEndpoint string = deploySpokeFoundry ? spokeFoundry.outputs.p
 output containerAppMiPrincipalId string = spokeContainerApps.outputs.sampleAppPrincipalId
 output spokeStorageAccountName string = spokeContainerApps.outputs.spokeStorageAccountName
 output spokeStorageBlobEndpoint string = spokeContainerApps.outputs.spokeStorageBlobEndpoint
+
+// Foundry account/project names for caphost creation (postprovision script)
+output hubFoundryAccountName string = hubFoundry.outputs.foundryAccountName
+output hubFoundryProjectName string = hubFoundry.outputs.foundryProjectName
+output hubStorageConnectionName string = hubFoundry.outputs.storageConnectionName
+output hubSearchConnectionName string = hubFoundry.outputs.searchConnectionName
+output hubCosmosConnectionName string = hubFoundry.outputs.cosmosConnectionName
+output spokeFoundryAccountName string = deploySpokeFoundry ? spokeFoundry.outputs.foundryAccountName : ''
+output spokeFoundryProjectName string = deploySpokeFoundry ? spokeFoundry.outputs.foundryProjectName : ''
+output spokeStorageConnectionName string = deploySpokeFoundry ? spokeFoundry.outputs.storageConnectionName : ''
+output spokeSearchConnectionName string = deploySpokeFoundry ? spokeFoundry.outputs.searchConnectionName : ''
+output spokeCosmosConnectionName string = deploySpokeFoundry ? spokeFoundry.outputs.cosmosConnectionName : ''

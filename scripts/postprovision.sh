@@ -1,20 +1,119 @@
 #!/usr/bin/env bash
 # --------------------------------------------------------------------------
-# postprovision hook — builds images and deploys agents
-# Runs automatically after `azd provision` (or `azd up`).
-# Solves the chicken-and-egg: ACR must exist before we can push an image.
+# postprovision — builds images and deploys agents
+# Called by scripts/deploy.sh (Phase 5) with env vars already exported.
 # --------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHAT_APP_DIR="${SCRIPT_DIR}/../apps/chat-agent"
 
-# azd populates env vars from Bicep outputs (exact output names)
-# Use eval to load them from azd env
-eval "$(azd env get-values 2>/dev/null | tr -d '\r')"
+SUB_ID=$(az account show --query id -o tsv)
+API_VERSION="2025-04-01-preview"
 
-ACR_LOGIN_SERVER="${acrLoginServer:-}"
+# --------------------------------------------------------------------------
+# Capability Host creation
+# VNet-injected caphosts can take 50+ minutes, exceeding ARM deployment
+# timeout. We create them here via REST API with polling.
+# --------------------------------------------------------------------------
+create_caphost() {
+  local rg="$1" account="$2" project="$3"
+  local storage_conn="$4" search_conn="$5" cosmos_conn="$6"
+
+  if [[ -z "$account" || -z "$project" ]]; then
+    return 0
+  fi
+
+  local base="https://management.azure.com/subscriptions/${SUB_ID}/resourceGroups/${rg}/providers/Microsoft.CognitiveServices"
+  local acct_url="${base}/accounts/${account}/capabilityHosts/caphost?api-version=${API_VERSION}"
+  local acct_list_url="${base}/accounts/${account}/capabilityHosts?api-version=${API_VERSION}"
+  local proj_url="${base}/accounts/${account}/projects/${project}/capabilityHosts/caphost?api-version=${API_VERSION}"
+  local proj_list_url="${base}/accounts/${account}/projects/${project}/capabilityHosts?api-version=${API_VERSION}"
+
+  # Helper: check if any caphost exists (platform may rename "caphost" internally)
+  caphost_state() {
+    local list_url="$1"
+    az rest --method get --url "$list_url" 2>/dev/null \
+      | python3 -c "import sys,json; v=json.load(sys.stdin).get('value',[]); print(v[0]['properties']['provisioningState'] if v else 'NotFound')" 2>/dev/null || echo "NotFound"
+  }
+
+  # Account-level caphost
+  local acct_state
+  acct_state=$(caphost_state "$acct_list_url")
+  if [[ "$acct_state" == "Succeeded" ]]; then
+    echo "✅ Account caphost already exists ($account)"
+  else
+    echo "🔧 Creating account caphost for $account (this can take 20-60 minutes)..."
+    az rest --method put --url "$acct_url" \
+      --body '{"properties":{"capabilityHostKind":"Agents"}}' -o none 2>&1 || true
+    # Poll until succeeded
+    for i in $(seq 1 120); do
+      acct_state=$(caphost_state "$acct_list_url")
+      if [[ "$acct_state" == "Succeeded" ]]; then
+        echo "✅ Account caphost created ($account)"
+        break
+      elif [[ "$acct_state" == "Failed" ]]; then
+        echo "❌ Account caphost creation failed ($account)"
+        return 1
+      fi
+      echo "   ⏳ State: $acct_state (waiting 30s, attempt $i/120)..."
+      sleep 30
+    done
+  fi
+
+  # Project-level caphost
+  local proj_state
+  proj_state=$(caphost_state "$proj_list_url")
+  if [[ "$proj_state" == "Succeeded" ]]; then
+    echo "✅ Project caphost already exists ($project)"
+  else
+    echo "🔧 Creating project caphost for $project..."
+    az rest --method put --url "$proj_url" \
+      --body "{\"properties\":{\"capabilityHostKind\":\"Agents\",\"vectorStoreConnections\":[\"${search_conn}\"],\"storageConnections\":[\"${storage_conn}\"],\"threadStorageConnections\":[\"${cosmos_conn}\"]}}" \
+      -o none 2>&1 || true
+    for i in $(seq 1 60); do
+      proj_state=$(caphost_state "$proj_list_url")
+      if [[ "$proj_state" == "Succeeded" ]]; then
+        echo "✅ Project caphost created ($project)"
+        break
+      elif [[ "$proj_state" == "Failed" ]]; then
+        echo "❌ Project caphost creation failed ($project)"
+        return 1
+      fi
+      echo "   ⏳ State: $proj_state (waiting 15s, attempt $i/60)..."
+      sleep 15
+    done
+  fi
+}
+
+HUB_RG="${hubResourceGroupName:-}"
+HUB_ACCOUNT="${hubFoundryAccountName:-}"
+HUB_PROJECT="${hubFoundryProjectName:-}"
+HUB_STORAGE_CONN="${hubStorageConnectionName:-}"
+HUB_SEARCH_CONN="${hubSearchConnectionName:-}"
+HUB_COSMOS_CONN="${hubCosmosConnectionName:-}"
+
+SPOKE_ACCOUNT="${spokeFoundryAccountName:-}"
+SPOKE_PROJECT="${spokeFoundryProjectName:-}"
+SPOKE_STORAGE_CONN="${spokeStorageConnectionName:-}"
+SPOKE_SEARCH_CONN="${spokeSearchConnectionName:-}"
+SPOKE_COSMOS_CONN="${spokeCosmosConnectionName:-}"
+
+if [[ -n "$HUB_ACCOUNT" ]]; then
+  create_caphost "$HUB_RG" "$HUB_ACCOUNT" "$HUB_PROJECT" \
+    "$HUB_STORAGE_CONN" "$HUB_SEARCH_CONN" "$HUB_COSMOS_CONN"
+fi
+
 SPOKE_RG="${spokeResourceGroupName:-}"
+if [[ -n "$SPOKE_ACCOUNT" ]]; then
+  create_caphost "$SPOKE_RG" "$SPOKE_ACCOUNT" "$SPOKE_PROJECT" \
+    "$SPOKE_STORAGE_CONN" "$SPOKE_SEARCH_CONN" "$SPOKE_COSMOS_CONN"
+fi
+
+# --------------------------------------------------------------------------
+# Image build & deploy
+# --------------------------------------------------------------------------
+ACR_LOGIN_SERVER="${acrLoginServer:-}"
 SPOKE_PROJECT="${spokeProjectEndpoint:-}"
 APIM_URL="${apimGatewayUrl:-}"
 
@@ -78,15 +177,6 @@ else
   echo "⚠️  No container app found in ${SPOKE_RG} — image built but not deployed."
 fi
 
-# Persist the image tag so the next `azd provision` uses it in Bicep
-# Write directly to .env file to avoid azd interactive prompts
-AZD_ENV_FILE="$(azd env list -o json 2>/dev/null | python3 -c "import json,sys;envs=json.load(sys.stdin);print(next(e['dotEnvPath'] for e in envs if e.get('isDefault')))" 2>/dev/null || true)"
-if [[ -n "$AZD_ENV_FILE" && -f "$AZD_ENV_FILE" ]]; then
-  sed -i '/^CHAT_AGENT_IMAGE=/d; /^CHAT_AGENT_PORT=/d' "$AZD_ENV_FILE"
-  echo "CHAT_AGENT_IMAGE=\"${IMAGE}\"" >> "$AZD_ENV_FILE"
-  echo "CHAT_AGENT_PORT=\"8000\"" >> "$AZD_ENV_FILE"
-fi
-
-echo "📝 CHAT_AGENT_IMAGE=${IMAGE} saved to azd env"
+echo "📝 CHAT_AGENT_IMAGE=${IMAGE}"
 
 
