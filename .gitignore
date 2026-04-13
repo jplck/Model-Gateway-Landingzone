@@ -1,5 +1,8 @@
 packages-microsoft-prod.deb
 
+# Compiled ARM templates from bicep build
+infra/*.json
+
 # Environment files with secrets
 .env
 .env.*
