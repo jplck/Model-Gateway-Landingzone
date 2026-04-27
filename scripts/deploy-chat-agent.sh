@@ -80,19 +80,11 @@ az containerapp update \
   --set-env-vars \
     "APIM_GATEWAY_URL=${APIM_URL}" \
     "APIM_API_KEY=secretref:apim-subscription-key" \
-    "OPENAI_DEPLOYMENT_NAME=gpt-4o" \
-    "OPENAI_API_VERSION=2024-10-21" \
+    "OPENAI_DEPLOYMENT_NAME=gpt-4.1" \
+    "OPENAI_API_VERSION=2025-03-01-preview" \
   --container-name chat-agent \
   --output none 2>/dev/null
 ok "Container app updated"
-
-info "Setting target port..."
-az containerapp ingress update \
-  --name "$CA_NAME" \
-  --resource-group "$SPOKE_RG" \
-  --target-port 8000 \
-  --output none 2>/dev/null
-ok "Ingress updated (port 8000)"
 
 # ============================================================================
 # 4. Also set azd env vars for future azd provision runs

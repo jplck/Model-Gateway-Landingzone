@@ -33,7 +33,7 @@
                 <mxCell id="spoke" value="Spoke" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontStyle=1;fontSize=14;verticalAlign=top;spacingTop=5;arcSize=6;" parent="1" vertex="1">
                     <mxGeometry x="560" y="40" width="400" height="420" as="geometry"/>
                 </mxCell>
-                <mxCell id="chat-agent" value="Chat Agent (Container App)&#xa;FastAPI — Port 8000&#xa;&#xa;POST /api/chat  (direct inference)&#xa;POST /api/agent/chat  (Foundry agent)&#xa;POST /api/hosted/chat  (hosted agent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050EF;strokeColor=#003087;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                <mxCell id="chat-agent" value="Chat Agent (Container App)&#xa;FastAPI — Port 8000&#xa;&#xa;POST /api/chat  (direct inference)&#xa;POST /api/agent/chat  (Foundry agent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050EF;strokeColor=#003087;fontColor=#FFFFFF;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="590" y="80" width="340" height="100" as="geometry"/>
                 </mxCell>
                 <mxCell id="spoke-foundry" value="Spoke AI Foundry&#xa;Agent Service + Capability Host&#xa;apim-gateway connection → APIM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontStyle=1;fontSize=10;verticalAlign=middle;arcSize=6;" parent="1" vertex="1">

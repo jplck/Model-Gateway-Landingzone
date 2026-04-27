@@ -35,7 +35,7 @@ param apimSubscriptionKey string = ''
 param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
 @description('Chat agent container port')
-param chatAgentPort int = 80
+param chatAgentPort int = 8000
 
 @description('Subnet ID for private endpoints (spoke PE subnet)')
 param privateEndpointSubnetId string

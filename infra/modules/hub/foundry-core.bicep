@@ -51,12 +51,6 @@ param apimSubscriptionKey string = ''
 @description('Application Insights connection string for tracing')
 param appInsightsConnectionString string = ''
 
-@description('ACR login server for hosted agent image pull (leave empty to skip)')
-param acrLoginServer string = ''
-
-@description('ACR resource ID for the connection credential (required when acrLoginServer is set)')
-param acrResourceId string = ''
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -434,29 +428,6 @@ resource apimGatewayConnection 'Microsoft.CognitiveServices/accounts/connections
         deploymentInPath: 'true'
         inferenceApiVersion: '2024-10-21'
         provider: 'AzureOpenAI'
-      }
-    }
-  }
-
-// ============================================================================
-// ACR Connection (spoke only — for hosted agent image pull)
-// ============================================================================
-
-resource acrConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' =
-  if (!empty(acrLoginServer)) {
-    parent: foundryProject
-    name: 'acr-connection'
-    properties: {
-      category: 'ContainerRegistry'
-      target: 'https://${acrLoginServer}'
-      authType: 'ManagedIdentity'
-      isSharedToAll: true
-      credentials: {
-        clientId: foundryProject.identity.principalId
-        resourceId: acrResourceId
-      }
-      metadata: {
-        ResourceId: acrResourceId
       }
     }
   }

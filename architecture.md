@@ -155,10 +155,10 @@
 
 
       ═══════════════════════════════════════════════════════════════════════════════════
-                            CI / CD  (postprovision hook)
+                            CI / CD  (postprovision phase)
       ═══════════════════════════════════════════════════════════════════════════════════
 
-      azd provision ──► Bicep deploys infra ──► postprovision.sh hook
+      ./scripts/deploy.sh ──► Bicep phases 1–4 ──► postprovision.sh (phase 5)
                                                       │
                                                       ├─ az acr build (cloud build)
                                                       │   └─ chat-agent:{timestamp}

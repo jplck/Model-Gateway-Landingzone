@@ -1,4 +1,4 @@
-"""Foundry Agent Service + Hosted Agent logic."""
+"""Foundry Agent Service logic."""
 
 import logging
 import re

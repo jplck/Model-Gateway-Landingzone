@@ -65,7 +65,7 @@ param appInsightsConnectionString string = ''
 param chatAgentImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
 @description('Chat agent container port')
-param chatAgentPort int = 80
+param chatAgentPort int = 8000
 
 @description('Enable the Agent ID auth sidecar')
 param enableAuthSidecar bool = false
@@ -154,8 +154,6 @@ module spokeFoundry 'modules/hub/foundry-core.bicep' = if (deploySpokeFoundry) {
     apimGatewayUrl: apimGatewayUrl
     apimSubscriptionKey: apimSubscriptionKey
     appInsightsConnectionString: appInsightsConnectionString
-    acrLoginServer: '${spokeAcrName}.azurecr.io'
-    acrResourceId: '${spokeRg.id}/providers/Microsoft.ContainerRegistry/registries/${spokeAcrName}'
   }
 }
 

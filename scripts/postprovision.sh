@@ -166,11 +166,6 @@ if [[ -n "$CA_NAME" ]]; then
     --image "$IMAGE" \
     --set-env-vars "PORT=8000" \
     --output none
-  az containerapp ingress update \
-    --name "$CA_NAME" \
-    --resource-group "$SPOKE_RG" \
-    --target-port 8000 \
-    --output none
 
   echo "✅ Container app updated to ${IMAGE} (port 8000)"
 else

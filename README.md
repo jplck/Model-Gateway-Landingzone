@@ -62,10 +62,10 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
                                                               └──► ARM API (dynamic
                                                                    model discovery)
 
-  CI / CD  (postprovision hook)
-  ─────────────────────────────
+  CI / CD  (postprovision phase)
+  ───────────────────────────────
 
-  azd provision ──► Bicep deploys infra ──► postprovision.sh hook
+  ./scripts/deploy.sh ──► Bicep phases 1–4 ──► postprovision.sh (phase 5)
                                                   │
                                                   ├─ az acr build (cloud build)
                                                   │   └─ chat-agent:{timestamp}
@@ -95,7 +95,7 @@ See [architecture.drawio](architecture.drawio) for the editable diagram (open wi
 ## Prerequisites
 
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) ≥ 2.67
-- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) ≥ 1.11
+- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) ≥ 1.11 — used as a local key/value cache by the deploy scripts (`azd env set/get-value`)
 - [Bicep CLI](https://learn.microsoft.com/azure/azure-resource-manager/bicep/install) ≥ 0.30
 - An Azure subscription with **Contributor** access
 - Quota for Azure OpenAI models (e.g., GPT-4o) in the target region
@@ -123,18 +123,17 @@ git clone git@github.com:jplck/aigw_lz.git
 cd aigw_lz
 
 # 2. Log in to Azure
-azd auth login
 az login
 
-# 3. Initialize environment
+# 3. Initialize a local azd env (used purely as a kv-store for the scripts)
 azd init -e dev
 
 # 4. Set required environment variables
 azd env set AZURE_LOCATION swedencentral
 azd env set APIM_PUBLISHER_EMAIL your-email@company.com
 
-# 5. Deploy everything
-azd up
+# 5. Deploy everything (phased: networking → hub → spoke → connectivity → postprovision)
+./scripts/deploy.sh
 ```
 
 Deployment takes approximately **45–60 minutes** (APIM Developer SKU alone takes ~30 min).
@@ -170,7 +169,7 @@ When `deploySpokeFoundry=true`, a second AI Foundry instance is deployed in the 
 
 ```bash
 azd env set DEPLOY_SPOKE_FOUNDRY true
-azd up
+./scripts/deploy.sh
 ```
 
 ### Optional: Entra Agent Identity (Auth Sidecar)
@@ -206,7 +205,7 @@ azd env set AGENT_MGMT_CLIENT_ID "<management-app-client-id>"
 azd env set AGENT_MGMT_CLIENT_SECRET "<management-app-client-secret>"
 
 # 2. Deploy infrastructure first (creates the Container App + MI)
-azd up
+./scripts/deploy.sh
 
 # 3. Run the agent identity setup script
 #    Creates: Blueprint → Blueprint SP → Agent Identity → FIC
@@ -215,13 +214,7 @@ azd up
 
 # 4. Redeploy with the auth sidecar enabled
 #    (The script sets ENABLE_AUTH_SIDECAR=true + BLUEPRINT_APP_ID + AGENT_IDENTITY_APP_ID in azd env)
-azd up
-
-# 5. (Optional) Set up Agent Identity + RBAC (the script handles role assignments)
-./scripts/setup_agent_identity.sh
-
-# 6. Redeploy with auth sidecar enabled
-azd up
+./scripts/deploy.sh
 ```
 
 The setup script prints the Agent Identity object ID and app ID at the end. These are also saved in `azd env` as `AGENT_IDENTITY_APP_ID` and `BLUEPRINT_APP_ID`.
@@ -266,7 +259,7 @@ The `CustomLangChainInstrumentor` automatically instruments LangChain/LangGraph 
 
 ```bash
 azd env set ENABLE_A365_OBSERVABILITY true
-azd up
+./scripts/deploy.sh
 ```
 
 **Required packages** (installed automatically when enabled):
@@ -315,10 +308,11 @@ curl -X POST "${APIM_URL}/openai/deployments/gpt-4o/responses?api-version=2025-0
 ## Repository Structure
 
 ```
-├── azure.yaml                          # azd project definition (postprovision hook)
 ├── infra/
-│   ├── main.bicep                      # Subscription-scoped orchestrator
-│   ├── main.bicepparam                 # Parameters file
+│   ├── hub.bicep                       # Phase 2 — observability, Foundry core, APIM
+│   ├── spoke.bicep                     # Phase 3 — Container Apps, optional spoke Foundry
+│   ├── connectivity.bicep              # Phase 4 — Foundry PEs, APIM Chat API, DNS, RBAC
+│   ├── networking.bicep                # Phase 1 — hub + spoke VNets, peering, DNS
 │   └── modules/
 │       ├── hub/
 │       │   ├── networking.bicep        # Hub VNet, subnets, NSGs
@@ -361,7 +355,7 @@ curl -X POST "${APIM_URL}/openai/deployments/gpt-4o/responses?api-version=2025-0
 
 To add load balancing across multiple Foundry instances, deploy another Foundry module and update APIM:
 
-1. Add a second `hubFoundry2` module call in `main.bicep` with `instanceSuffix: 'hub2'`
+1. Add a second `hubFoundry2` module call in `hub.bicep` with `instanceSuffix: 'hub2'`
 2. Register the new endpoint as an additional APIM backend
 3. Update `openai-api-policy.xml` to use a backend pool with round-robin routing
 
